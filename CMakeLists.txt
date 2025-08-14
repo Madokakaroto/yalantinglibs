@@ -23,6 +23,8 @@ if(CMAKE_PROJECT_NAME STREQUAL "yaLanTingLibs") # if ylt is top-level project
 
         include(cmake/Find/find_openssl.cmake)
         include(cmake/Find/find_ibverbs.cmake)
+        include(cmake/Find/find_networkdirect.cmake)
+
         include(cmake/utils.cmake)
         include(cmake/build.cmake)
         include(cmake/develop.cmake)
