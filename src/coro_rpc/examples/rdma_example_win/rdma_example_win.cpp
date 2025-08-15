@@ -15,5 +15,9 @@
  */
 #include <memory>
 #include <thread>
+#include "ylt/coro_io/networkdirect/nd_error.hpp"
+#include "ylt/coro_io/networkdirect/nd_adapter.hpp"
 
-int main() { return 0; }
+int main() { 
+  return 0;
+}
