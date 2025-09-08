@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 #include <libloaderapi.h>
 #include <ws2spi.h>
+#include <guiddef.h>
 #include <ndsupport.h>
 #include <ndstatus.h>
 #include <ndspi.h>

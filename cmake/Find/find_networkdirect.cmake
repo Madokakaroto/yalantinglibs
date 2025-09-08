@@ -1,15 +1,11 @@
 if(WIN32)
   set(YLT_NETWORKDIRECT_ROOT "" CACHE PATH "Path to the root folder of NetworkDirect SDK")
-  if(EXISTS "${YLT_NETWORKDIRECT_ROOT}/src/netdirect.sln")
-    # NetworkDirect SDK source installed
-    set(YLT_NETWORKDIRECT_INCLUDE_DIR "${YLT_NETWORKDIRECT_ROOT}/src/ndutil")
-    set(YLT_NETWORKDIRECT_LIB_DIR "${YLT_NETWORKDIRECT_ROOT}/src/ndutil/x64/Release")
-    set(YLT_HAVE_ND ON)
-  elseif(EXISTS "${YLT_NETWORKDIRECT_ROOT}/lib/x64/ndutil.lib")
+  if(EXISTS "${YLT_NETWORKDIRECT_ROOT}/lib/x64/ndutil.lib")
     # NetworkDirect SDK installed with Nuget
     set(YLT_NETWORKDIRECT_INCLUDE_DIR "${YLT_NETWORKDIRECT_ROOT}/include")
     set(YLT_NETWORKDIRECT_LIB_DIR "${YLT_NETWORKDIRECT_ROOT}/lib/x64")
     set(YLT_HAVE_ND ON)
+    message(STATUS "Using NetworkDirect from pre-built package: ${YLT_NETWORKDIRECT_INCLUDE_DIR} ${YLT_NETWORKDIRECT_LIB_DIR}")
   elseif(EXISTS "${CMAKE_TOOLCHAIN_FILE}")
     # NetworkDirect SDK installed with vcpkg
     get_filename_component(YLT_VCPKG_CMAKE "${CMAKE_TOOLCHAIN_FILE}" NAME)

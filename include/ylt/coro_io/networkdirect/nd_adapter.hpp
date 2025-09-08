@@ -33,6 +33,7 @@ class nd_adapter_manager_t {
   nd_global_t global_;
   std::vector<nd_provider_t> providers_;
   std::vector<nd_adapter_t> adapters_;
+  nd_adapter_t invalid_adapter_;
 
   static bool is_valid_addr(SOCKADDR const& addr);
   static bool is_valid_proto(WSAPROTOCOL_INFOW const& proto);
@@ -64,15 +65,29 @@ class nd_adapter_manager_t {
   static std::vector<nd_adapter_t> create_adapters(std::vector<nd_provider_t> const& providers);
 
   nd_adapter_manager_t()
-      : global_()
-      , providers_(get_providers())
-      , adapters_() {
+    : global_()
+    , providers_(get_providers())
+    , adapters_(create_adapters(providers_)) {
   }
 
  public:
   static nd_adapter_manager_t const& instance() {
     static nd_adapter_manager_t instance{};
     return instance;
+  }
+
+  nd_adapter_t const& get_adapter(std::string const& adapter_name) const {
+    auto itr = std::ranges::find_if(adapters_, [&](auto const& adapter) {
+      return adapter.name_ == adapter_name;
+      });
+    if (itr != adapters_.end()) {
+      return *itr;
+    }
+    return invalid_adapter_;
+  }
+
+  bool has_valid_adapter() const {
+    return adapters_.empty();
   }
 };
 
@@ -98,7 +113,8 @@ inline bool nd_adapter_manager_t::is_valid_addr(SOCKADDR const& addr) {
 inline bool nd_adapter_manager_t::is_valid_proto(WSAPROTOCOL_INFOW const& proto) {
   constexpr auto fi_nd_proto_flag = XP1_GUARANTEED_DELIVERY |
                                     XP1_GUARANTEED_ORDER |
-                                    XP1_MESSAGE_ORIENTED | XP1_CONNECT_DATA;
+                                    XP1_MESSAGE_ORIENTED | 
+                                    XP1_CONNECT_DATA;
   if ((proto.dwServiceFlags1 & fi_nd_proto_flag) != fi_nd_proto_flag) {
     return false;
   }
@@ -120,18 +136,18 @@ inline void nd_adapter_manager_t::enumerate_protos(
   DWORD proto_len = 0;
   int err = 0;
 
-  HRESULT hr = ::WSCEnumProtocols(nullptr, nullptr, &proto_len, &err);
-  if (hr != SOCKET_ERROR || err != WSAENOBUFS) {
-    ec = std::error_code{ err, std::system_category() };
+  int number_info = ::WSCEnumProtocols(nullptr, nullptr, &proto_len, &err);
+  if (number_info == SOCKET_ERROR && err != WSAENOBUFS) {
+    ec = make_system_error_code(err);
     return;
   }
 
   std::size_t const array_size = proto_len / sizeof(WSAPROTOCOL_INFOW);
   std::vector<WSAPROTOCOL_INFOW> result{};
   result.resize(array_size);
-  hr = ::WSCEnumProtocols(nullptr, result.data(), &proto_len, &err);
-  if (FAILED(hr)) {
-    ec = std::error_code{err, std::system_category()};
+  number_info = ::WSCEnumProtocols(nullptr, result.data(), &proto_len, &err);
+  if (number_info == SOCKET_ERROR) {
+    ec = make_system_error_code(err);
     return;
   }
 
@@ -288,6 +304,7 @@ inline void nd_adapter_manager_t::enumerate_addr_list(
         nd2_sockaddr_t result{};
         std::memcpy(&result.src_addr_, sock_addr.lpSockaddr,
                     sock_addr.iSockaddrLength);
+        result.address_size_ = sock_addr.iSockaddrLength;
         result.provider_index_ = provider.index_;
     return result;
   });
@@ -365,19 +382,20 @@ inline std::string nd_adapter_manager_t::query_adapter_name(
     if (res != 0) {
       ec = make_system_error_code(::WSAGetLastError());
     }
+    else {
+      ec.clear();
+    }
     if (!ec) {
       res = ::WideCharToMultiByte(CP_ACP, 0, string_buffer, -1, NULL, 0, 0, 0);
       if (res == 0) {
-        ec = asio::error_code{static_cast<int>(::GetLastError()),
-                              asio::error::get_system_category()};
+        ec = make_system_error_code(GetLastError());
       }
       else {
         result.resize(res);
         res = ::WideCharToMultiByte(CP_ACP, 0, string_buffer, -1, result.data(),
                                     res, 0, 0);
         if (res == 0) {
-          ec = asio::error_code{static_cast<int>(::GetLastError()),
-                                asio::error::get_system_category()};
+          ec = make_system_error_code(::GetLastError());
         }
       }
     }
@@ -396,43 +414,48 @@ inline std::string nd_adapter_manager_t::query_adapter_name(
     if (res != 0) {
       ec = make_system_error_code(::WSAGetLastError());
     }
+    else {
+      ec.clear();
+    }
   }
 #endif
   return result;
 }
 
 inline std::vector<nd_provider_t> nd_adapter_manager_t::get_providers() {
+
+  auto const protos = enumerate_protos();
   auto providers =
-    enumerate_protos() |
-      std::views::transform([index{size_t{0}}](auto const& proto) mutable {
-        std::error_code ec{};
-        nd_provider_t result{};
-        auto const provider_path = get_provider_path(proto, ec);
-        if (!ec) {
-          return result;
-        }
+    protos |
+    std::views::transform([](auto const& proto) mutable {
+      std::error_code ec{};
+      nd_provider_t result{};
+      auto const provider_path = get_provider_path(proto, ec);
+      if (ec) {
+        return result;
+      }
 
-        auto provider_factory = create_provider_factory(
-          provider_path, proto, ec);
-        if (!ec) {
-          return result;
-        }
+      auto provider_factory = create_provider_factory(
+        provider_path, proto, ec);
+      if (ec) {
+        return result;
+      }
 
-        auto provider = create_provider(*provider_factory, ec);
-        if (!ec) {
-          return result;
-        }
+      auto provider = create_provider(*provider_factory, ec);
+      if (ec) {
+        return result;
+      }
 
-        return result = {
-          .factory_ = provider_factory,
-          .provider_ = provider,
-          .index_ = index++,
-        };
-      }) | std::views::filter([](auto const& provider) {
-        return provider.provider_ != nullptr;
-      });
+      return result = {
+        .factory_ = provider_factory,
+        .provider_ = provider,
+        .index_ = 0,
+      };
+    }) | std::views::filter([](auto const& provider) {
+      return provider.provider_ != nullptr;
+    });
 
-  return {std::ranges::begin(providers), std::ranges::end(providers) };
+  return { std::ranges::begin(providers), std::ranges::end(providers) };
 }
 
 inline std::vector<nd_adapter_t> nd_adapter_manager_t::create_adapters(
