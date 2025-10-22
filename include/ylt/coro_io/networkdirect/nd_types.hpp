@@ -1,71 +1,69 @@
 #pragma once
 
-#include <memory>
-
-#include <winnt.h>
-#include <wrl/client.h>
-#include <libloaderapi.h>
-#include <ws2spi.h>
-#include <guiddef.h>
-#include <ndsupport.h>
-#include <ndstatus.h>
-#include <ndspi.h>
+#include "ylt/coro_io/networkdirect/detail/nd_impl_types.hpp"
 
 namespace coro_io {
 
-struct handle_deleter {
-  void operator()(HANDLE handle) const {
-    if (handle != INVALID_HANDLE_VALUE || handle != NULL) {
-      ::CloseHandle(handle);
-    }
-  }
-};
-using unique_handle_t = std::unique_ptr<std::remove_pointer_t<HANDLE>, handle_deleter>;
-
-struct module_deleter {
-  void operator()(HMODULE module) const {
-    if (module != NULL) {
-      ::FreeLibrary(module);
-    }
-  }
-};
-using unique_module_t = std::unique_ptr<std::remove_pointer_t<HMODULE>, module_deleter>;
-
-using nd2_adapter_ptr = Microsoft::WRL::ComPtr<IND2Adapter>;
-using nd2_provider_ptr = Microsoft::WRL::ComPtr<IND2Provider>;
-using nd2_connector_ptr = Microsoft::WRL::ComPtr<IND2Connector>;
-using nd2_listener_ptr = Microsoft::WRL::ComPtr<IND2Listener>;
-using nd2_queue_pair_ptr = Microsoft::WRL::ComPtr<IND2QueuePair>;
-using nd2_completion_queue_ptr = Microsoft::WRL::ComPtr<IND2CompletionQueue>;
-using nd2_overlapped_ptr = Microsoft::WRL::ComPtr<IND2Overlapped>;
-using nd2_memory_region_ptr = Microsoft::WRL::ComPtr<IND2MemoryRegion>;
-using class_factory_ptr = Microsoft::WRL::ComPtr<IClassFactory>;
-
-using dll_can_unload_now = HRESULT (*)(void);
-using dll_get_class_object = HRESULT (*)(REFCLSID rclsid, REFIID rrid,
-                                         LPVOID *ppv);
-
-struct nd2_sockaddr_t {
-  union {
-    struct sockaddr src_addr_;
-    struct sockaddr_in src_sin_;
-    struct sockaddr_in6 src_sin6_;
-    struct sockaddr_storage src_storage_;
-  };
-  size_t address_size_;
-  size_t provider_index_;
+// command types
+enum mr_acccess_flag {
+  mr_access_local_write,
+  mr_access_remote_read,
+  mr_access_remote_write,
 };
 
-struct scope_buffer {
-  void* buffer{nullptr};
-  explicit scope_buffer(void* buffer_ptr)
-    : buffer(buffer_ptr) {
-  }
-  ~scope_buffer() {
-    if (buffer) {
-      std::free(buffer);
-    }
-  }
+struct nd2_cq_init_attr {
+  HANDLE overlapped_handle_;
+  USHORT processor_group_;
+  KAFFINITY processor_affinity_;
 };
+
+struct nd2_cq_notify_attr {
+  ULONG type_;
+  LPOVERLAPPED op_;
+};
+
+struct nd2_qp_init_attr {
+  void* qp_context_;
+  IND2CompletionQueue* rcq_;
+  IND2CompletionQueue* icq_;
+  ULONG rcq_depth_;
+  ULONG icq_depth_;
+  ULONG rsge_;
+  ULONG isge_;
+  ULONG inline_data_size_;
+};
+
+// native type definition for the { windows, network-direct } platform
+using result_type = HRESULT;
+using size_type = ULONG;
+using native_context_config_t = ND2_ADAPTER_INFO;
+using native_context_t = IND2Adapter;
+struct native_pd_t {
+  native_context_t* context_;
+  detail::unique_handle_t sync_handle_;
+};
+using native_qp_t = IND2QueuePair;
+using native_cq_t = IND2CompletionQueue;
+using native_mr_t = IND2MemoryRegion;
+using native_sge_t = ND2_SGE;
+using native_wc_t = ND2_RESULT;
+using native_qp_init_attr = nd2_qp_init_attr;
+using native_cq_init_attr = nd2_cq_init_attr;
+using native_cq_notify_attr = nd2_cq_notify_attr;
+
+}  // namespace coro_io
+
+namespace coro_io {
+
+// adapter with name & info(capabilities)
+struct nd_device_t {
+  detail::nd_provider_ptr provider_;
+  detail::nd2_adapter_ptr adapter_;
+  std::string name_;
+  native_context_config_t info_;
+};
+using nd_device_ptr = std::shared_ptr<nd_device_t>;
+using native_device_t = nd_device_t;
+using native_device_ptr = nd_device_ptr;
 
 }

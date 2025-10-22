@@ -15,7 +15,7 @@ inline asio::detail::winsock_init<>::manual manual_winsock_init
 #include <ndsupport.h>
 #include "ylt/easylog.hpp"
 
-namespace coro_io {
+namespace coro_io::detail {
 struct nd_global_t {
   int wsa_init_ { 0 };
   nd_global_t() {

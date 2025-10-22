@@ -1,97 +1,10 @@
 #pragma once
 
-#include <ranges>
-#include "ylt/coro_io/networkdirect/nd_asio_manual_init.hpp"
 #include "ylt/coro_io/networkdirect/nd_types.hpp"
-#include "ylt/coro_io/networkdirect/nd_error.hpp"
 
-namespace coro_io {
+namespace coro_io::detail {
 
-struct nd_provider_factory_t {
-  WSAPROTOCOL_INFOW proto_;
-  std::wstring module_name_;
-  unique_module_t module_;
-  dll_can_unload_now unload_;
-  class_factory_ptr factory_;
-};
-using nd_provider_factory_ptr = std::shared_ptr<nd_provider_factory_t>;
-
-struct nd_provider_t {
-  nd_provider_factory_ptr factory_;
-  nd2_provider_ptr provider_;
-  size_t index_;
-};
-
-struct nd_adapter_t {
-  nd2_adapter_ptr adapter_;
-  std::string name_;
-  ND2_ADAPTER_INFO info_;
-};
-
-class nd_adapter_manager_t {
- private:
-  nd_global_t global_;
-  std::vector<nd_provider_t> providers_;
-  std::vector<nd_adapter_t> adapters_;
-  nd_adapter_t invalid_adapter_;
-
-  static bool is_valid_addr(SOCKADDR const& addr);
-  static bool is_valid_proto(WSAPROTOCOL_INFOW const& proto);
-  static void enumerate_protos(std::vector<WSAPROTOCOL_INFOW>& out_protos,
-                               std::error_code& ec);
-  static std::vector<WSAPROTOCOL_INFOW> enumerate_protos();
-  static std::wstring get_provider_path(WSAPROTOCOL_INFOW const& proto,
-                                        std::error_code& ec);
-  static auto create_provider_factory(std::wstring provider_path,
-                               WSAPROTOCOL_INFOW const& proto,
-                               std::error_code& ec) -> nd_provider_factory_ptr;
-  static auto create_provider(nd_provider_factory_t const& factory,
-                              std::error_code& ec) -> nd2_provider_ptr;
-  static void enumerate_addr_list(nd_provider_t const& provider,
-                                  std::vector<nd2_sockaddr_t>& addr_list,
-                                  std::error_code& ec);
-  static auto enumerate_addr_list(nd_provider_t const& provider)
-      -> std::vector<nd2_sockaddr_t>;
-  static auto open_adapter(nd2_provider_ptr const& ptr, sockaddr const* addrin,
-                    std::size_t addr_size, asio::error_code& ec)
-      -> nd2_adapter_ptr;
-  static ND2_ADAPTER_INFO query_adapter_info(nd2_adapter_ptr const& adaptor,
-                                             asio::error_code& ec);
-  static std::string query_adapter_name(ND2_ADAPTER_INFO const& info,
-                                           sockaddr* addrin,
-                                           std::size_t addr_size,
-                                           asio::error_code& ec);
-  static std::vector<nd_provider_t> get_providers();
-  static std::vector<nd_adapter_t> create_adapters(std::vector<nd_provider_t> const& providers);
-
-  nd_adapter_manager_t()
-    : global_()
-    , providers_(get_providers())
-    , adapters_(create_adapters(providers_)) {
-  }
-
- public:
-  static nd_adapter_manager_t const& instance() {
-    static nd_adapter_manager_t instance{};
-    return instance;
-  }
-
-  nd_adapter_t const& get_adapter(std::string const& adapter_name) const {
-    auto itr = std::ranges::find_if(adapters_, [&](auto const& adapter) {
-      return adapter.name_ == adapter_name;
-      });
-    if (itr != adapters_.end()) {
-      return *itr;
-    }
-    return invalid_adapter_;
-  }
-
-  bool has_valid_adapter() const {
-    return adapters_.empty();
-  }
-};
-
-inline bool nd_adapter_manager_t::is_valid_addr(SOCKADDR const& addr) {
+inline bool is_valid_addr(SOCKADDR const& addr) {
   switch (addr.sa_family) {
     case AF_INET: {
       sockaddr_in const& addr4 = reinterpret_cast<sockaddr_in const&>(addr);
@@ -110,11 +23,10 @@ inline bool nd_adapter_manager_t::is_valid_addr(SOCKADDR const& addr) {
   return false;
 }
 
-inline bool nd_adapter_manager_t::is_valid_proto(WSAPROTOCOL_INFOW const& proto) {
+inline bool is_valid_proto(WSAPROTOCOL_INFOW const& proto) {
   constexpr auto fi_nd_proto_flag = XP1_GUARANTEED_DELIVERY |
                                     XP1_GUARANTEED_ORDER |
-                                    XP1_MESSAGE_ORIENTED | 
-                                    XP1_CONNECT_DATA;
+                                    XP1_MESSAGE_ORIENTED | XP1_CONNECT_DATA;
   if ((proto.dwServiceFlags1 & fi_nd_proto_flag) != fi_nd_proto_flag) {
     return false;
   }
@@ -130,9 +42,8 @@ inline bool nd_adapter_manager_t::is_valid_proto(WSAPROTOCOL_INFOW const& proto)
   return proto.iVersion == NDVER;
 }
 
-inline void nd_adapter_manager_t::enumerate_protos(
-    std::vector<WSAPROTOCOL_INFOW>& out_protos,
-    std::error_code& ec) {
+inline void enumerate_protos(std::vector<WSAPROTOCOL_INFOW>& out_protos,
+                             std::error_code& ec) {
   DWORD proto_len = 0;
   int err = 0;
 
@@ -161,7 +72,7 @@ inline void nd_adapter_manager_t::enumerate_protos(
   ec.clear();
 }
 
-inline std::vector<WSAPROTOCOL_INFOW> nd_adapter_manager_t::enumerate_protos() {
+inline std::vector<WSAPROTOCOL_INFOW> enumerate_protos() {
   std::vector<WSAPROTOCOL_INFOW> result{};
   std::error_code ec{};
   enumerate_protos(result, ec);
@@ -169,9 +80,8 @@ inline std::vector<WSAPROTOCOL_INFOW> nd_adapter_manager_t::enumerate_protos() {
   return result;
 }
 
-inline std::wstring nd_adapter_manager_t::get_provider_path(
-    WSAPROTOCOL_INFOW const& proto,
-    std::error_code& ec) {
+inline std::wstring get_provider_path(WSAPROTOCOL_INFOW const& proto,
+                                      std::error_code& ec) {
   int len = 0, err = 0, res = 0;
 
   res = WSCGetProviderPath((GUID*)&proto.ProviderId, NULL, &len, &err);
@@ -210,11 +120,11 @@ inline std::wstring nd_adapter_manager_t::get_provider_path(
   return result;
 }
 
-inline auto nd_adapter_manager_t::create_provider_factory(
-    std::wstring provider_path,
-    WSAPROTOCOL_INFOW const& proto, asio::error_code& ec)
+inline auto create_provider_factory(std::wstring provider_path,
+                                    WSAPROTOCOL_INFOW const& proto,
+                                    std::error_code& ec)
     -> nd_provider_factory_ptr {
-  unique_module_t provier_module{ LoadLibraryW(provider_path.c_str()) };
+  unique_module_t provier_module{LoadLibraryW(provider_path.c_str())};
   if (!provier_module) {
     ec = make_system_error_code(::GetLastError());
     return nullptr;
@@ -252,8 +162,8 @@ inline auto nd_adapter_manager_t::create_provider_factory(
   return provider_factory;
 }
 
-auto nd_adapter_manager_t::create_provider(nd_provider_factory_t const& factory,
-                                         std::error_code& ec) -> nd2_provider_ptr {
+inline auto create_provider(nd_provider_factory_t const& factory,
+                            std::error_code& ec) -> nd2_provider_ptr {
   nd2_provider_ptr provdier{};
   HRESULT const hr = factory.factory_->CreateInstance(
       nullptr, IID_IND2Provider,
@@ -265,11 +175,10 @@ auto nd_adapter_manager_t::create_provider(nd_provider_factory_t const& factory,
   return provdier;
 }
 
-inline void nd_adapter_manager_t::enumerate_addr_list(
-    nd_provider_t const& provider,
-    std::vector<nd2_sockaddr_t>& addr_list,
-    std::error_code& ec) {
-  ULONG addr_list_buffer_size{ 0ul };
+inline void enumerate_addr_list(nd_provider_t const& provider,
+                                std::vector<nd2_sockaddr_t>& addr_list,
+                                std::error_code& ec) {
+  ULONG addr_list_buffer_size{0ul};
   provider.provider_->QueryAddressList(nullptr, &addr_list_buffer_size);
   if (addr_list_buffer_size == 0) {
     ec = make_error_code(std::errc::address_not_available);
@@ -294,29 +203,28 @@ inline void nd_adapter_manager_t::enumerate_addr_list(
     return;
   }
 
-  auto addr_range = std::ranges::subrange{
-      temp_addr_list->Address,
-      temp_addr_list->Address + temp_addr_list->iAddressCount}
-  | std::views::filter([](auto const& sock_addr) {
-    // TODO... config
-        return sock_addr.lpSockaddr->sa_family == AF_INET;
-  }) | std::views::transform([&](auto const& sock_addr) {
-        nd2_sockaddr_t result{};
-        std::memcpy(&result.src_addr_, sock_addr.lpSockaddr,
-                    sock_addr.iSockaddrLength);
-        result.address_size_ = sock_addr.iSockaddrLength;
-        result.provider_index_ = provider.index_;
-    return result;
-  });
-  std::vector<nd2_sockaddr_t> result{
-    addr_range.begin(), addr_range.end()};
+  auto addr_range = std::ranges::subrange{temp_addr_list->Address,
+                                          temp_addr_list->Address +
+                                              temp_addr_list->iAddressCount} |
+                    std::views::filter([](auto const& sock_addr) {
+                      // TODO... config
+                      return sock_addr.lpSockaddr->sa_family == AF_INET;
+                    }) |
+                    std::views::transform([&](auto const& sock_addr) {
+                      nd2_sockaddr_t result{};
+                      std::memcpy(&result.src_addr_, sock_addr.lpSockaddr,
+                                  sock_addr.iSockaddrLength);
+                      result.address_size_ = sock_addr.iSockaddrLength;
+                      result.provider_index_ = provider.index_;
+                      return result;
+                    });
+  std::vector<nd2_sockaddr_t> result{addr_range.begin(), addr_range.end()};
 
   addr_list = std::move(result);
   ec.clear();
 }
 
-inline auto nd_adapter_manager_t::enumerate_addr_list(
-    nd_provider_t const& provider)
+inline auto enumerate_addr_list(nd_provider_t const& provider)
     -> std::vector<nd2_sockaddr_t> {
   std::vector<nd2_sockaddr_t> result{};
   std::error_code ec{};
@@ -325,9 +233,9 @@ inline auto nd_adapter_manager_t::enumerate_addr_list(
   return result;
 }
 
-inline auto nd_adapter_manager_t::open_adapter(
-    nd2_provider_ptr const& provider, sockaddr const* addrin,
-    std::size_t addr_size, asio::error_code& ec)
+inline auto open_adapter(nd2_provider_ptr const& provider,
+                         sockaddr const* addrin, std::size_t addr_size,
+                         asio::error_code& ec)
     -> nd2_adapter_ptr {
   UINT64 adaptor_id = 0;
   HRESULT hr = provider->ResolveAddress(addrin, static_cast<ULONG>(addr_size),
@@ -348,11 +256,9 @@ inline auto nd_adapter_manager_t::open_adapter(
   return adapter;
 }
 
-inline ND2_ADAPTER_INFO nd_adapter_manager_t::query_adapter_info(
-    nd2_adapter_ptr const& adaptor,
-    asio::error_code& ec) {
+inline ND2_ADAPTER_INFO query_adapter_info(nd2_adapter_ptr const& adaptor,
+                                           asio::error_code& ec) {
   assert(adaptor);
-
   ND2_ADAPTER_INFO result = {0};
   result.InfoVersion = ND_VERSION_2;
   ULONG linfo = sizeof(result);
@@ -363,10 +269,9 @@ inline ND2_ADAPTER_INFO nd_adapter_manager_t::query_adapter_info(
   return result;
 }
 
-inline std::string nd_adapter_manager_t::query_adapter_name(
-    ND2_ADAPTER_INFO const& info,
-    sockaddr* addrin, std::size_t addr_size,
-    asio::error_code& ec) {
+inline std::string query_adapter_name(ND2_ADAPTER_INFO const& info,
+                                      sockaddr* addrin, std::size_t addr_size,
+                                      asio::error_code& ec) {
   std::string result{};
   DWORD addrlen = 0;
 #if defined(_MSC_VER) && (_MSC_VER >= 1800)
@@ -422,81 +327,160 @@ inline std::string nd_adapter_manager_t::query_adapter_name(
   return result;
 }
 
-inline std::vector<nd_provider_t> nd_adapter_manager_t::get_providers() {
-
+inline std::vector<nd_provider_ptr> get_providers() {
   auto const protos = enumerate_protos();
-  auto providers =
+  auto providers = 
     protos |
     std::views::transform([](auto const& proto) mutable {
       std::error_code ec{};
-      nd_provider_t result{};
+      auto result = std::make_shared<nd_provider_t>();
       auto const provider_path = get_provider_path(proto, ec);
       if (ec) {
         return result;
       }
-
-      auto provider_factory = create_provider_factory(
-        provider_path, proto, ec);
+      auto provider_factory =
+          create_provider_factory(provider_path, proto, ec);
       if (ec) {
         return result;
       }
-
       auto provider = create_provider(*provider_factory, ec);
       if (ec) {
         return result;
       }
-
-      return result = {
-        .factory_ = provider_factory,
-        .provider_ = provider,
-        .index_ = 0,
-      };
-    }) | std::views::filter([](auto const& provider) {
-      return provider.provider_ != nullptr;
+      result->factory_ = provider_factory;
+      result->provider_ = provider;
+      result->index_ = 0;
+      return result;
+    }) |
+    std::views::filter([](auto const& provider) {
+      return provider->provider_ != nullptr;
     });
 
-  return { std::ranges::begin(providers), std::ranges::end(providers) };
+  return {std::ranges::begin(providers), std::ranges::end(providers)};
 }
 
-inline std::vector<nd_adapter_t> nd_adapter_manager_t::create_adapters(
-  std::vector<nd_provider_t> const& providers) {
-  auto adapters = providers | std::views::transform([](auto const& provider) {
-    return enumerate_addr_list(provider);
-  }) | std::views::join | std::views::transform([&](auto& addr) {
-    std::error_code ec{};
-    nd_adapter_t result{};
-    auto adapter_ptr =
-        open_adapter(providers[addr.provider_index_].provider_, &addr.src_addr_,
-                     addr.address_size_, ec);
-    if (ec) {
-      return result;
+inline std::vector<nd_device_ptr> create_devices(
+    std::vector<nd_provider_ptr> const& providers) {
+  auto devices = providers | 
+      std::views::transform([](auto const& provider) {
+        return enumerate_addr_list(*provider);
+      }) |
+      std::views::join | std::views::transform([&](auto& addr) {
+        std::error_code ec{};
+        auto result = std::make_shared<nd_device_t>();
+        auto adapter_ptr =
+            open_adapter(providers[addr.provider_index_]->provider_,
+                         &addr.src_addr_, addr.address_size_, ec);
+        if (ec) {
+          return result;
+        }
+
+        auto const adapter_info = query_adapter_info(adapter_ptr, ec);
+        if (ec) {
+          return result;
+        }
+
+        auto const adapter_name = query_adapter_name(
+            adapter_info, &addr.src_addr_, addr.address_size_, ec);
+        if (ec) {
+          return result;
+        }
+
+        result->provider_ = providers[addr.provider_index_];
+        result->adapter_ = adapter_ptr;
+        result->name_ = adapter_name;
+        result->info_ = adapter_info;
+        return result;
+      }) |
+      std::views::filter([](auto const& device) {
+        return device && device->adapter_ != nullptr;
+      }) | std::views::common;
+
+  return {std::ranges::begin(devices), std::ranges::end(devices)};
+}
+
+inline bool is_valid_device(nd_device_ptr const& device,
+                             ND2_ADAPTER_INFO const& config) {
+  if (!device) {
+    return false;
+  }
+
+  auto const& capabilities = device->info_;
+  if (config.MaxRegistrationSize != 0 &&
+      config.MaxRegistrationSize > capabilities.MaxRegistrationSize) {
+    return false;
+  }
+  if (config.MaxWindowSize != 0 &&
+      config.MaxWindowSize > capabilities.MaxWindowSize) {
+    return false;
+  }
+  if (config.MaxInitiatorSge != 0 &&
+      config.MaxInitiatorSge > capabilities.MaxInitiatorSge) {
+    return false;
+  }
+  if (config.MaxReceiveSge != 0 &&
+      config.MaxReceiveSge > capabilities.MaxReceiveSge) {
+    return false;
+  }
+  if (config.MaxReadSge != 0 && config.MaxReadSge > capabilities.MaxReadSge) {
+    return false;
+  }
+  if (config.MaxTransferLength != 0 &&
+      config.MaxTransferLength > capabilities.MaxTransferLength) {
+    return false;
+  }
+  if (config.MaxInlineDataSize != 0 &&
+      config.MaxInlineDataSize > capabilities.MaxInlineDataSize) {
+    return false;
+  }
+  if (config.MaxInboundReadLimit != 0 &&
+      config.MaxInboundReadLimit > capabilities.MaxInboundReadLimit) {
+    return false;
+  }
+  if (config.MaxOutboundReadLimit != 0 &&
+      config.MaxOutboundReadLimit > capabilities.MaxOutboundReadLimit) {
+    return false;
+  }
+  if (config.MaxReceiveQueueDepth != 0 &&
+      config.MaxReceiveQueueDepth > capabilities.MaxReceiveQueueDepth) {
+    return false;
+  }
+  if (config.MaxInitiatorQueueDepth != 0 &&
+      config.MaxInitiatorQueueDepth > capabilities.MaxInitiatorQueueDepth) {
+    return false;
+  }
+  if (config.MaxSharedReceiveQueueDepth != 0 &&
+      config.MaxSharedReceiveQueueDepth >
+          capabilities.MaxSharedReceiveQueueDepth) {
+    return false;
+  }
+  if (config.MaxCompletionQueueDepth != 0 &&
+      config.MaxCompletionQueueDepth > capabilities.MaxCompletionQueueDepth) {
+    return false;
+  }
+  if (config.InlineRequestThreshold != 0 &&
+      config.InlineRequestThreshold > capabilities.InlineRequestThreshold) {
+    return false;
+  }
+  if (config.LargeRequestThreshold != 0 &&
+      config.LargeRequestThreshold > capabilities.LargeRequestThreshold) {
+    return false;
+  }
+  if (config.MaxCallerData != 0 &&
+      config.MaxCallerData > capabilities.MaxCallerData) {
+    return false;
+  }
+  if (config.MaxCalleeData != 0 &&
+      config.MaxCalleeData > capabilities.MaxCalleeData) {
+    return false;
+  }
+  if (config.AdapterFlags != 0) {
+    if ((config.AdapterFlags & capabilities.AdapterFlags) !=
+      config.AdapterFlags) {
+      return false;
     }
-
-    auto const adapter_info = query_adapter_info(adapter_ptr, ec);
-    if (ec) {
-      return result;
-    }
-
-    auto const adapter_name = query_adapter_name(
-        adapter_info, &addr.src_addr_, addr.address_size_, ec);
-    if (ec) {
-      return result;
-    }
-
-    return result = {
-      .adapter_ = adapter_ptr,
-      .name_ = adapter_name,
-      .info_ = adapter_info,
-    };
-  }) | std::views::filter([](nd_adapter_t const& adapter) {
-    return adapter.adapter_ != nullptr;
-  });
-
-  std::vector<nd_adapter_t> result{};
-  std::ranges::for_each(adapters, [&result](nd_adapter_t const& adapter) {
-    result.push_back(adapter);
-  });
-  return result;
+  }
+  return true;
 }
 
 }

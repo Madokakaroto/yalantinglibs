@@ -15,12 +15,10 @@
  */
 #include <memory>
 #include <thread>
-#include "ylt/coro_io/networkdirect/nd_error.hpp"
-#include "ylt/coro_io/networkdirect/nd_adapter.hpp"
-#include "ylt/coro_io/networkdirect/detail/nd_op_base.hpp"
+#include "ylt/coro_io/networkdirect/nd_connector.hpp"
 
 int main() {
-  auto const& adapter_manager =
-    coro_io::nd_adapter_manager_t::instance();
+  auto const& device_manager =
+    coro_io::nd_device_manager_t::instance();
   return 0;
 }
