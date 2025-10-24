@@ -26,11 +26,11 @@ struct nd2_qp_init_attr {
   void* qp_context_;
   IND2CompletionQueue* rcq_;
   IND2CompletionQueue* icq_;
-  ULONG rcq_depth_;
-  ULONG icq_depth_;
-  ULONG rsge_;
-  ULONG isge_;
-  ULONG inline_data_size_;
+  ULONG max_send_wr_;
+  ULONG max_recv_wr_;
+  ULONG max_send_sge_;
+  ULONG max_recv_sge_;
+  ULONG max_inline_data_;
 };
 
 // native type definition for the { windows, network-direct } platform
@@ -51,14 +51,11 @@ using native_qp_init_attr = nd2_qp_init_attr;
 using native_cq_init_attr = nd2_cq_init_attr;
 using native_cq_notify_attr = nd2_cq_notify_attr;
 
-}  // namespace coro_io
-
-namespace coro_io {
-
-// adapter with name & info(capabilities)
+// nd device
 struct nd_device_t {
   detail::nd_provider_ptr provider_;
   detail::nd2_adapter_ptr adapter_;
+  std::unique_ptr<native_pd_t> pd_;
   std::string name_;
   native_context_config_t info_;
 };
@@ -66,4 +63,4 @@ using nd_device_ptr = std::shared_ptr<nd_device_t>;
 using native_device_t = nd_device_t;
 using native_device_ptr = nd_device_ptr;
 
-}
+}  // namespace coro_io

@@ -4,7 +4,49 @@
 
 namespace coro_io::detail {
 
-inline bool is_valid_addr(SOCKADDR const& addr) {
+inline bool is_valid_addr(SOCKADDR const& addr);
+inline bool is_valid_proto(WSAPROTOCOL_INFOW const& proto);
+
+inline void enumerate_protos(std::vector<WSAPROTOCOL_INFOW>& out_protos,
+                             asio::error_code& ec);
+inline std::vector<WSAPROTOCOL_INFOW> enumerate_protos();
+inline std::wstring get_provider_path(WSAPROTOCOL_INFOW const& proto,
+                                      asio::error_code& ec);
+inline auto create_provider_factory(std::wstring provider_path,
+                                    WSAPROTOCOL_INFOW const& proto,
+                                    asio::error_code& ec)
+    -> nd_provider_factory_ptr;
+inline auto create_provider(nd_provider_factory_t const& factory,
+                            std::error_code& ec) -> nd2_provider_ptr;
+inline void enumerate_addr_list(nd_provider_t const& provider,
+                                std::vector<nd2_sockaddr_t>& addr_list,
+                                asio::error_code& ec);
+inline auto enumerate_addr_list(nd_provider_t const& provider)
+    -> std::vector<nd2_sockaddr_t>;
+inline auto open_adapter(nd2_provider_ptr const& provider,
+                         sockaddr const* addrin, std::size_t addr_size,
+                         asio::error_code& ec) -> nd2_adapter_ptr;
+inline ND2_ADAPTER_INFO query_adapter_info(nd2_adapter_ptr const& adaptor,
+                                           asio::error_code& ec);
+inline std::string query_adapter_name(ND2_ADAPTER_INFO const& info,
+                                      sockaddr* addrin, std::size_t addr_size,
+                                      asio::error_code& ec);
+inline std::vector<nd_provider_ptr> get_providers();
+inline std::vector<nd_device_ptr> create_devices(
+    std::vector<nd_provider_ptr> const& providers);
+inline bool is_valid_device(nd_device_ptr const& device,
+                            ND2_ADAPTER_INFO const& config);
+inline IND2Connector* create_connector(IND2Adapter* device,
+                                       HANDLE overlapped_handle,
+                                       asio::error_code& ec);
+inline HANDLE create_overlapped_file(native_context_t* context,
+                                     asio::error_code& ec);
+
+}
+
+namespace coro_io::detail {
+
+bool is_valid_addr(SOCKADDR const& addr) {
   switch (addr.sa_family) {
     case AF_INET: {
       sockaddr_in const& addr4 = reinterpret_cast<sockaddr_in const&>(addr);
@@ -23,7 +65,7 @@ inline bool is_valid_addr(SOCKADDR const& addr) {
   return false;
 }
 
-inline bool is_valid_proto(WSAPROTOCOL_INFOW const& proto) {
+bool is_valid_proto(WSAPROTOCOL_INFOW const& proto) {
   constexpr auto fi_nd_proto_flag = XP1_GUARANTEED_DELIVERY |
                                     XP1_GUARANTEED_ORDER |
                                     XP1_MESSAGE_ORIENTED | XP1_CONNECT_DATA;
@@ -42,8 +84,8 @@ inline bool is_valid_proto(WSAPROTOCOL_INFOW const& proto) {
   return proto.iVersion == NDVER;
 }
 
-inline void enumerate_protos(std::vector<WSAPROTOCOL_INFOW>& out_protos,
-                             std::error_code& ec) {
+void enumerate_protos(std::vector<WSAPROTOCOL_INFOW>& out_protos,
+                      asio::error_code& ec) {
   DWORD proto_len = 0;
   int err = 0;
 
@@ -72,7 +114,7 @@ inline void enumerate_protos(std::vector<WSAPROTOCOL_INFOW>& out_protos,
   ec.clear();
 }
 
-inline std::vector<WSAPROTOCOL_INFOW> enumerate_protos() {
+std::vector<WSAPROTOCOL_INFOW> enumerate_protos() {
   std::vector<WSAPROTOCOL_INFOW> result{};
   std::error_code ec{};
   enumerate_protos(result, ec);
@@ -80,8 +122,8 @@ inline std::vector<WSAPROTOCOL_INFOW> enumerate_protos() {
   return result;
 }
 
-inline std::wstring get_provider_path(WSAPROTOCOL_INFOW const& proto,
-                                      std::error_code& ec) {
+std::wstring get_provider_path(WSAPROTOCOL_INFOW const& proto,
+                               asio::error_code& ec) {
   int len = 0, err = 0, res = 0;
 
   res = WSCGetProviderPath((GUID*)&proto.ProviderId, NULL, &len, &err);
@@ -120,9 +162,9 @@ inline std::wstring get_provider_path(WSAPROTOCOL_INFOW const& proto,
   return result;
 }
 
-inline auto create_provider_factory(std::wstring provider_path,
-                                    WSAPROTOCOL_INFOW const& proto,
-                                    std::error_code& ec)
+auto create_provider_factory(std::wstring provider_path,
+                             WSAPROTOCOL_INFOW const& proto,
+                             asio::error_code& ec)
     -> nd_provider_factory_ptr {
   unique_module_t provier_module{LoadLibraryW(provider_path.c_str())};
   if (!provier_module) {
@@ -162,8 +204,8 @@ inline auto create_provider_factory(std::wstring provider_path,
   return provider_factory;
 }
 
-inline auto create_provider(nd_provider_factory_t const& factory,
-                            std::error_code& ec) -> nd2_provider_ptr {
+auto create_provider(nd_provider_factory_t const& factory, asio::error_code& ec)
+    -> nd2_provider_ptr {
   nd2_provider_ptr provdier{};
   HRESULT const hr = factory.factory_->CreateInstance(
       nullptr, IID_IND2Provider,
@@ -175,9 +217,9 @@ inline auto create_provider(nd_provider_factory_t const& factory,
   return provdier;
 }
 
-inline void enumerate_addr_list(nd_provider_t const& provider,
-                                std::vector<nd2_sockaddr_t>& addr_list,
-                                std::error_code& ec) {
+void enumerate_addr_list(nd_provider_t const& provider,
+                         std::vector<nd2_sockaddr_t>& addr_list,
+                         asio::error_code& ec) {
   ULONG addr_list_buffer_size{0ul};
   provider.provider_->QueryAddressList(nullptr, &addr_list_buffer_size);
   if (addr_list_buffer_size == 0) {
@@ -203,28 +245,27 @@ inline void enumerate_addr_list(nd_provider_t const& provider,
     return;
   }
 
-  auto addr_range = std::ranges::subrange{temp_addr_list->Address,
-                                          temp_addr_list->Address +
-                                              temp_addr_list->iAddressCount} |
-                    std::views::filter([](auto const& sock_addr) {
-                      // TODO... config
-                      return sock_addr.lpSockaddr->sa_family == AF_INET;
-                    }) |
-                    std::views::transform([&](auto const& sock_addr) {
-                      nd2_sockaddr_t result{};
-                      std::memcpy(&result.src_addr_, sock_addr.lpSockaddr,
-                                  sock_addr.iSockaddrLength);
-                      result.address_size_ = sock_addr.iSockaddrLength;
-                      result.provider_index_ = provider.index_;
-                      return result;
-                    });
+  auto addr_range = std::ranges::subrange{
+    temp_addr_list->Address,
+    temp_addr_list->Address + temp_addr_list->iAddressCount} 
+    | std::views::filter([](auto const& sock_addr) {
+      // TODO... config
+      return sock_addr.lpSockaddr->sa_family == AF_INET; 
+    })
+    | std::views::transform([&](auto const& sock_addr) {
+      nd2_sockaddr_t result{};
+      std::memcpy(&result.src_addr_, sock_addr.lpSockaddr,
+                  sock_addr.iSockaddrLength);
+      result.address_size_ = sock_addr.iSockaddrLength;
+      result.provider_index_ = provider.index_;
+      return result;
+    });
   std::vector<nd2_sockaddr_t> result{addr_range.begin(), addr_range.end()};
-
   addr_list = std::move(result);
   ec.clear();
 }
 
-inline auto enumerate_addr_list(nd_provider_t const& provider)
+auto enumerate_addr_list(nd_provider_t const& provider)
     -> std::vector<nd2_sockaddr_t> {
   std::vector<nd2_sockaddr_t> result{};
   std::error_code ec{};
@@ -233,9 +274,8 @@ inline auto enumerate_addr_list(nd_provider_t const& provider)
   return result;
 }
 
-inline auto open_adapter(nd2_provider_ptr const& provider,
-                         sockaddr const* addrin, std::size_t addr_size,
-                         asio::error_code& ec)
+auto open_adapter(nd2_provider_ptr const& provider, sockaddr const* addrin,
+                  std::size_t addr_size, asio::error_code& ec)
     -> nd2_adapter_ptr {
   UINT64 adaptor_id = 0;
   HRESULT hr = provider->ResolveAddress(addrin, static_cast<ULONG>(addr_size),
@@ -256,8 +296,8 @@ inline auto open_adapter(nd2_provider_ptr const& provider,
   return adapter;
 }
 
-inline ND2_ADAPTER_INFO query_adapter_info(nd2_adapter_ptr const& adaptor,
-                                           asio::error_code& ec) {
+ND2_ADAPTER_INFO query_adapter_info(nd2_adapter_ptr const& adaptor,
+                                    asio::error_code& ec) {
   assert(adaptor);
   ND2_ADAPTER_INFO result = {0};
   result.InfoVersion = ND_VERSION_2;
@@ -269,9 +309,8 @@ inline ND2_ADAPTER_INFO query_adapter_info(nd2_adapter_ptr const& adaptor,
   return result;
 }
 
-inline std::string query_adapter_name(ND2_ADAPTER_INFO const& info,
-                                      sockaddr* addrin, std::size_t addr_size,
-                                      asio::error_code& ec) {
+std::string query_adapter_name(ND2_ADAPTER_INFO const& info, sockaddr* addrin,
+                               std::size_t addr_size, asio::error_code& ec) {
   std::string result{};
   DWORD addrlen = 0;
 #if defined(_MSC_VER) && (_MSC_VER >= 1800)
@@ -327,7 +366,7 @@ inline std::string query_adapter_name(ND2_ADAPTER_INFO const& info,
   return result;
 }
 
-inline std::vector<nd_provider_ptr> get_providers() {
+std::vector<nd_provider_ptr> get_providers() {
   auto const protos = enumerate_protos();
   auto providers = 
     protos |
@@ -359,13 +398,14 @@ inline std::vector<nd_provider_ptr> get_providers() {
   return {std::ranges::begin(providers), std::ranges::end(providers)};
 }
 
-inline std::vector<nd_device_ptr> create_devices(
+std::vector<nd_device_ptr> create_devices(
     std::vector<nd_provider_ptr> const& providers) {
-  auto devices = providers | 
-      std::views::transform([](auto const& provider) {
+  auto devices = providers 
+    | std::views::transform([](auto const& provider) {
         return enumerate_addr_list(*provider);
-      }) |
-      std::views::join | std::views::transform([&](auto& addr) {
+      }) 
+    | std::views::join 
+    | std::views::transform([&](auto& addr) {
         std::error_code ec{};
         auto result = std::make_shared<nd_device_t>();
         auto adapter_ptr =
@@ -386,21 +426,31 @@ inline std::vector<nd_device_ptr> create_devices(
           return result;
         }
 
+        auto pd = std::make_unique<native_pd_t>();
+        pd->context_ = adapter_ptr.Get();
+        pd->sync_handle_.reset(create_overlapped_file(adapter_ptr.Get(), ec));
+        if (ec) {
+          return result;
+        }
+
         result->provider_ = providers[addr.provider_index_];
         result->adapter_ = adapter_ptr;
+        result->pd_ = std::move(pd);
         result->name_ = adapter_name;
         result->info_ = adapter_info;
+
         return result;
-      }) |
-      std::views::filter([](auto const& device) {
+      }) 
+    | std::views::filter([](auto const& device) {
         return device && device->adapter_ != nullptr;
-      }) | std::views::common;
+      }) 
+    | std::views::common;
 
   return {std::ranges::begin(devices), std::ranges::end(devices)};
 }
 
-inline bool is_valid_device(nd_device_ptr const& device,
-                             ND2_ADAPTER_INFO const& config) {
+bool is_valid_device(nd_device_ptr const& device,
+                     ND2_ADAPTER_INFO const& config) {
   if (!device) {
     return false;
   }
@@ -481,6 +531,24 @@ inline bool is_valid_device(nd_device_ptr const& device,
     }
   }
   return true;
+}
+
+IND2Connector* create_connector(IND2Adapter* device, HANDLE overlapped_handle,
+                                asio::error_code& ec) {
+  assert(device);
+  IND2Connector* result{nullptr};
+  auto const hr = device->CreateConnector(IID_IND2Connector, overlapped_handle,
+                                          reinterpret_cast<LPVOID*>(&result));
+  ec = static_cast<nd_errc>(hr);
+  return result;
+}
+
+HANDLE create_overlapped_file(native_context_t* context, asio::error_code& ec) {
+  assert(context);
+  HANDLE result;
+  auto const hr = context->CreateOverlappedFile(&result);
+  ec = static_cast<nd_errc>(hr);
+  return result;
 }
 
 }

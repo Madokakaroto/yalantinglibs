@@ -5,15 +5,6 @@
 
 namespace coro_io::detail::verbs_ops {
 
-inline HANDLE create_overlapped_file(native_context_t* context,
-                                     asio::error_code& ec) {
-  assert(context);
-  HANDLE result;
-  auto const hr = context->CreateOverlappedFile(&result);
-  ec = static_cast<nd_errc>(hr);
-  return result;
-}
-
 // post send
 inline result_type post_send(native_qp_t* qp, void* request_context,
                              native_sge_t* sge_list, size_type sge_count,
@@ -135,9 +126,9 @@ inline native_qp_t* create_qp(native_pd_t* pd,
   native_qp_t* result{nullptr};
   auto const hr = pd->context_->CreateQueuePair(
       IID_IND2QueuePair, qp_init_attr.rcq_, qp_init_attr.icq_,
-      qp_init_attr.qp_context_, qp_init_attr.rcq_depth_,
-      qp_init_attr.icq_depth_, qp_init_attr.rsge_, qp_init_attr.isge_,
-      qp_init_attr.inline_data_size_,
+      qp_init_attr.qp_context_, qp_init_attr.max_recv_wr_,
+      qp_init_attr.max_send_wr_, qp_init_attr.max_recv_sge_,
+      qp_init_attr.max_send_sge_, qp_init_attr.max_inline_data_,
       reinterpret_cast<LPVOID*>(std::addressof(result)));
   ec = static_cast<nd_errc>(hr);
   return result;
