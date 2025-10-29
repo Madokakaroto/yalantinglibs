@@ -159,6 +159,13 @@ enum class nd_errc : int {
   host_unreachable = ND_HOST_UNREACHABLE,
   connection_aborted = ND_CONNECTION_ABORTED,
   device_removed = ND_DEVICE_REMOVED,
+
+  ndext_no_available_address = -1,
+  ndext_already_stopped = -2,
+  ndext_invalid_listener = -3,
+  ndext_invalid_connector = -4,
+  ndext_invalid_qp = -5,
+  ndext_invalid_cq = -6,
 };
 
 inline std::error_code make_nd_error_code(int e) {

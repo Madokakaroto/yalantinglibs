@@ -3,6 +3,18 @@
 #include "ylt/coro_io/networkdirect/nd_types.hpp"
 #include "ylt/coro_io/networkdirect/nd_error.hpp"
 
+namespace coro_io::detail {
+
+HANDLE create_overlapped_file(native_context_t* context, asio::error_code& ec) {
+  assert(context);
+  HANDLE result;
+  auto const hr = context->CreateOverlappedFile(&result);
+  ec = static_cast<nd_errc>(hr);
+  return result;
+}
+
+}
+
 namespace coro_io::detail::verbs_ops {
 
 // post send
@@ -66,7 +78,7 @@ inline native_pd_t* allocate_pd(native_context_t* context,
     return nullptr;
   }
 
-  std::unique_ptr<native_pd_t> new_pd{new native_pd_t{.context_ = context}};
+  auto new_pd = std::make_unique<native_pd_t>();
 #ifndef __cpp_exceptions
   if (!new_pd)
   {
@@ -75,6 +87,7 @@ inline native_pd_t* allocate_pd(native_context_t* context,
   }
 #endif
 
+  new_pd->context_ = context;
   new_pd->sync_handle_ = std::move(handle);
   return new_pd.release();
 }

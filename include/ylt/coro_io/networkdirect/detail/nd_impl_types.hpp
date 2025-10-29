@@ -10,6 +10,10 @@
 #include <ndstatus.h>
 #include <ndspi.h>
 
+namespace coro_io {
+  using size_type = ULONG;
+}
+
 namespace coro_io::detail {
 
 // raii handler
@@ -87,5 +91,35 @@ struct nd_provider_t {
   size_t index_;
 };
 using nd_provider_ptr = std::shared_ptr<nd_provider_t>;
+
+// configuration type to initialize the shared state
+// TODO ... align with ibverbs
+struct nd_connector_config_t {
+  size_type cqe_ = 64;
+  size_type max_send_wr_ = 32;
+  size_type max_recv_wr_ = 32;
+  size_type max_send_sge_ = 8;
+  size_type max_recv_sge_ = 8;
+  size_type max_inline_data_ = 16;
+  size_type inbound_read_limit_ = 0;
+  size_type outbound_read_limit_ = 0;
+};
+
+// shared state for a rdma connection
+struct nd_connector_state_t {
+  // is opened
+  bool is_opened_;
+  // overlapped handle to receive IO completion
+  unique_handle_t overlapped_handle_;
+  // the network-direect connector interface
+  nd2_connector_ptr connector_;
+  // the completion queue interface to poll IO work completion
+  nd2_completion_queue_ptr cq_;
+  // the queue pair interface to perform verbs IO operations
+  nd2_queue_pair_ptr qp_;
+  // configuration to create this shared state
+  nd_connector_config_t config_;
+};
+using nd_connector_state_ptr = std::shared_ptr<nd_connector_state_t>;
 
 }

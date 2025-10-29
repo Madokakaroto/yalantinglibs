@@ -4,7 +4,7 @@
 #include "ylt/coro_io/networkdirect/detail/nd_asio_manual_init.hpp"
 #include "ylt/coro_io/networkdirect/nd_types.hpp"
 #include "ylt/coro_io/networkdirect/nd_error.hpp"
-#include "ylt/coro_io/networkdirect/detail/nd_adapter_impl.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_device_impl.hpp"
 
 namespace coro_io {
 

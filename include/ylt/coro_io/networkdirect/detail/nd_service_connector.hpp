@@ -6,43 +6,35 @@
 #include "asio/detail/memory.hpp"
 #include "asio/detail/mutex.hpp"
 #include "ylt/coro_io/networkdirect/detail/nd_service_base.hpp"
-#include "ylt/coro_io/networkdirect/detail/nd_verbs_ops.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_ops_verbs.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_ops_cm.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_op_connect.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_op_accept.hpp"
 
 namespace coro_io::detail {
 
-/* template <typename PortSpace> */
+template <typename PortSpace>
 class nd_iocp_connector_service
   : public asio::detail::execution_context_service_base<
-          nd_iocp_connector_service/*<PortSpace>*/>
+          nd_iocp_connector_service<PortSpace>>
   , public nd_service_base {
 public:
   /// export public types
   using base_type = asio::detail::execution_context_service_base<
-     nd_iocp_connector_service/*<PortSpace>*/>;
+     nd_iocp_connector_service<PortSpace>>;
+
+  // the port space type
+  using port_space_type = PortSpace;
+
+  // the endpoint type
+  using endpoint_type = typename port_space_type::endpoint;
 
   // configuration type to initialize the shared state
-  // TODO ... align with ibverbs
-  struct config_t {
-    size_type cqe_ = 64;
-    size_type max_send_wr_ = 32;
-    size_type max_recv_wr_ = 32;
-    size_type max_send_sge_ = 8;
-    size_type max_recv_sge_ = 8;
-    size_type max_inline_data_ = 16;
-  };
+  using config_t = nd_connector_config_t;
 
   // shared state of a rdma connection:
-  struct shared_state_t {
-    // overlapped handle to receive IO completion
-    unique_handle_t overlapped_handle_;
-    // the network-direect connector interface
-    nd2_connector_ptr connector_;
-    // the completion queue interface to poll IO work completion
-    nd2_completion_queue_ptr cq_;
-    // the queue pair interface to perform verbs IO operations
-    nd2_queue_pair_ptr qp_;
-  };
-  using shared_state_ptr = std::shared_ptr<shared_state_t>;
+  using shared_state_t = nd_connector_state_t;
+  using shared_state_ptr = nd_connector_state_ptr;
 
   // implementation_type used by asio::detail::io_object_imipl
   struct implementation_type : nd_service_base::base_implementation_type {
@@ -99,93 +91,104 @@ public: // rule of five, used by asio::detail::io_object_impl
     }
   }
 
-public: // public interfaces
-  bool is_open(implementation_type const& impl) { 
-    return impl.state_ != nullptr && impl.state_->qp_ != nullptr; 
+public: // public interfaces on implementation type
+  bool has_valid_state(implementation_type const& impl) const {
+    return impl.state_ != nullptr;
   }
 
-  bool is_valid_device(nd_device_ptr const& device) {
-    return device != nullptr && device->adapter_ != nullptr;
+  asio::error_code set_state(implementation_type& impl,
+                             shared_state_ptr const& shared_state,
+                             asio::error_code& ec) const {
+    if (is_open(impl)) {
+      ec = asio::error::already_open;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    close_for_destruction(impl);
   }
 
-  bool is_config_valid(nd_device_ptr const& device, config_t const& config) {
-    assert(is_valid_device(device));
-    return true;
+  bool is_open(implementation_type const& impl) const { 
+    return has_valid_state(impl) && impl.state_->is_opended;
   }
 
-  shared_state_ptr create_shared_state(nd_device_ptr const& device,
-                                       config_t const& config,
-                                       asio::error_code& ec) {
-    assert(is_valid_device(device));
-
-    // create overlapped handle for notification of IO completion
-    unique_handle_t overlapped_handle{};
-    overlapped_handle.reset(
-        create_overlapped_file(device->adapter_.Get(), ec));
-    if (ec) {
+  asio::error_code open(implementation_type& impl,
+                        shared_state_ptr const& shared_state,
+                        asio::error_code& ec) {
+    if (is_open(impl)) {
+      ec = asio::error::already_open;
       ASIO_ERROR_LOCATION(ec);
-      return nullptr;
+      return ec;
     }
-
-    // create network-direct connector interface
-    nd2_connector_ptr connector{};
-    connector.Attach(
-        create_connector(device->adapter_.Get(), overlapped_handle.get(), ec));
+    do_open(shared_state, ec);
     if (ec) {
-      ASIO_ERROR_LOCATION(ec);
-      return nullptr;
+      return ec;
     }
-
-    // create verbs completion queue
-    nd2_completion_queue_ptr cq{};
-    native_cq_init_attr cq_init_attr{
-        .overlapped_handle_ = overlapped_handle.get(),
-        .processor_group_ = 0,
-        .processor_affinity_ = 0,
-    };
-    cq.Attach(verbs_ops::create_cq(device->adapter_.Get(), config.cqe_,
-                                   cq_init_attr, ec));
-    if (ec) {
-      ASIO_ERROR_LOCATION(ec);
-      return nullptr;
-    }
-
-    // create verbs queue pair
-    nd2_queue_pair_ptr qp{};
-    native_qp_init_attr qp_init_attr{
-        .qp_context_ = nullptr,
-        .rcq_ = cq.Get(),
-        .icq_ = cq.Get(),
-        .max_send_wr_ = config.max_send_wr_,
-        .max_recv_wr_ = config.max_recv_wr_,
-        .max_send_sge_ = config.max_send_sge_,
-        .max_recv_sge_ = config.max_recv_sge_,
-        .max_inline_data_ = config.max_inline_data_,
-    };
-    qp.Attach(verbs_ops::create_qp(device->pd_.get(), qp_init_attr, ec));
-    if (ec) {
-      ASIO_ERROR_LOCATION(ec);
-      return nullptr;
-    }
-
-    // exceptional-safty codes
-    auto shared_state = std::make_shared<shared_state_t>();
-    shared_state->overlapped_handle_ = std::move(overlapped_handle);
-    shared_state->connector_ = std::move(connector);
-    shared_state->cq_ = std::move(cq);
-    shared_state->qp_ = std::move(qp);
-    return shared_state;
+    close_for_destruction(impl);
+    impl.state_ = shared_state;
+    return ec;
   }
 
-  void bind_shared_state(shared_state_ptr const& shared_state,
-                         asio::error_code& ec) {
-    this->scheduler_.register_handle(
-      shared_state->overlapped_handle_.get(), ec);
+  asio::error_code open(implementation_type& impl, asio::error_code& ec) {
+    if (!has_valid_state(impl)) {
+      ec = nd_errc::ndext_invalid_connector;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    if (is_open(impl)) {
+      ec = asio::error::already_open;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    do_open(impl, ec);
+    if (ec) {
+      return ec;
+    }
+  }
+
+  asio::error_code do_open(shared_state_ptr const& shared_state,
+                           asio::error_code& ec) {
+    register_state(shared_state, ec);
+    if (ec) {
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    ec.clear();
+    return ec;
+  }
+
+  void close(implementation_type& impl) {
+    close_for_destruction(impl);
+  }
+  
+  asio::error_code bind_addr(implementation_type& impl,
+                             sockaddr const* addrin, std::size_t addr_size,
+                             asio::error_code& ec) {
+    if (impl.state_ == nullptr || impl.state_->connector_) {
+      ec = nd_errc::ndext_invalid_connector;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+
+    bind_addr(impl.state_->connector_.Get(), addrin, addr_size, ec);
+    if (ec) {
+      ASIO_ERROR_LOCATION(ec);
+    }
+    return ec;
+  }
+
+ public: // public interfaces on shared state type
+  asio::error_code register_state(shared_state_ptr& shared_state,
+                                  asio::error_code& ec) {
+    assert(shared_state->is_opened_ == false);
+    this->scheduler_.register_handle(shared_state->overlapped_handle_.get(),
+                                     ec);
+    shared_state->is_opened_ = true;
+    return ec;
   }
 
 private:
   void close_for_destruction(implementation_type& impl) {
-   if (is_open(impl)) {
+   if (has_valid_state(impl)) {
      // ASIO_HANDLER_OPERATION((context(), "handle", &impl,
      // reinterpret_cast<uintmax_t>(impl.connector_.Get()), "close"));
      impl.state_->qp_.Reset(); 
@@ -194,7 +197,6 @@ private:
      impl.state_->overlapped_handle_.reset();
    }
   }
-
 
 };
 

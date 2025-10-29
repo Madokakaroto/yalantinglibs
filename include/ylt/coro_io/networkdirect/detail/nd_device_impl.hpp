@@ -36,12 +36,9 @@ inline std::vector<nd_device_ptr> create_devices(
     std::vector<nd_provider_ptr> const& providers);
 inline bool is_valid_device(nd_device_ptr const& device,
                             ND2_ADAPTER_INFO const& config);
-inline IND2Connector* create_connector(IND2Adapter* device,
-                                       HANDLE overlapped_handle,
-                                       asio::error_code& ec);
+inline bool is_valid_device(nd_device_ptr const& device);
 inline HANDLE create_overlapped_file(native_context_t* context,
                                      asio::error_code& ec);
-
 }
 
 namespace coro_io::detail {
@@ -533,22 +530,8 @@ bool is_valid_device(nd_device_ptr const& device,
   return true;
 }
 
-IND2Connector* create_connector(IND2Adapter* device, HANDLE overlapped_handle,
-                                asio::error_code& ec) {
-  assert(device);
-  IND2Connector* result{nullptr};
-  auto const hr = device->CreateConnector(IID_IND2Connector, overlapped_handle,
-                                          reinterpret_cast<LPVOID*>(&result));
-  ec = static_cast<nd_errc>(hr);
-  return result;
-}
-
-HANDLE create_overlapped_file(native_context_t* context, asio::error_code& ec) {
-  assert(context);
-  HANDLE result;
-  auto const hr = context->CreateOverlappedFile(&result);
-  ec = static_cast<nd_errc>(hr);
-  return result;
+bool is_valid_device(nd_device_ptr const& device) {
+  return device != nullptr && device->adapter_ != nullptr;
 }
 
 }

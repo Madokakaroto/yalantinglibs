@@ -24,18 +24,17 @@ struct nd2_cq_notify_attr {
 
 struct nd2_qp_init_attr {
   void* qp_context_;
-  IND2CompletionQueue* rcq_;
-  IND2CompletionQueue* icq_;
-  ULONG max_send_wr_;
-  ULONG max_recv_wr_;
-  ULONG max_send_sge_;
-  ULONG max_recv_sge_;
-  ULONG max_inline_data_;
+  IND2CompletionQueue* rcq_;  // receive completion queue
+  IND2CompletionQueue* icq_;  // initiator completion queue
+  ULONG max_send_wr_;         // max send work requests
+  ULONG max_recv_wr_;         // max recv work requests
+  ULONG max_send_sge_;        // max send num of scatter/gather elements
+  ULONG max_recv_sge_;        // max recv num of scatter/gather elements
+  ULONG max_inline_data_;     // max payload data size in a packet
 };
 
 // native type definition for the { windows, network-direct } platform
 using result_type = HRESULT;
-using size_type = ULONG;
 using native_context_config_t = ND2_ADAPTER_INFO;
 using native_context_t = IND2Adapter;
 struct native_pd_t {
