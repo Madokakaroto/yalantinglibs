@@ -103,6 +103,20 @@ public:
         return "ND_CONNECTION_ABORTED";
       case ND_DEVICE_REMOVED:
         return "ND_DEVICE_REMOVED";
+      case -1:  // nd_errc::ndext_no_available_address
+        return "ND_EXT no available address";
+      case -2: // nd_errc::ndext_already_stopt
+        return "ND_EXT already stopt";
+      case -3: // nd_errc::ndext_invalid_listener
+        return "ND_EXT invalid listener";
+      case -4: // nd_errc::ndext_invalid_connector
+        return "ND_EXT invalid connector";
+      case -5: //nd_errc::ndext_invalid_qp
+        return "ND_EXT invalid queue pair";
+      case -6: // nd_errc::ndext_invalid_cq
+        return "ND_EXT invalid completion queue";
+      case -7: //nd_errc::ndext_invalid_mr
+        return "ND_EXT invalid memory region"; 
       default:
         return "UNKNOWN_ND_ERROR";
     }
@@ -161,11 +175,12 @@ enum class nd_errc : int {
   device_removed = ND_DEVICE_REMOVED,
 
   ndext_no_available_address = -1,
-  ndext_already_stopped = -2,
+  ndext_already_stopt = -2,
   ndext_invalid_listener = -3,
   ndext_invalid_connector = -4,
   ndext_invalid_qp = -5,
   ndext_invalid_cq = -6,
+  ndext_invalid_mr = -7,
 };
 
 inline std::error_code make_nd_error_code(int e) {

@@ -47,7 +47,7 @@ class nd_device_manager_t {
     return nullptr;
   }
 
-  nd_device_ptr query_device(native_context_config_t const& config) {
+  nd_device_ptr query_device(nd_context_config_t const& config) {
     auto valid_devices = devices_ 
       | std::views::filter([&](auto const& device) {
           return detail::is_valid_device(device, config);
@@ -60,7 +60,7 @@ class nd_device_manager_t {
   }
 
   nd_device_ptr query_device(std::string const& device_name,
-                             native_context_config_t const& config) {
+                             nd_context_config_t const& config) {
     auto valid_devices = devices_
       | std::views::filter([&](auto const& device) {
           if (!detail::is_valid_device(device, config)) {

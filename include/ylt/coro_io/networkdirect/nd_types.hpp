@@ -1,65 +1,51 @@
 #pragma once
 
-#include "ylt/coro_io/networkdirect/detail/nd_impl_types.hpp"
+#include <memory>
+#include <string>
+#include <winnt.h>
+#include <wrl/client.h>
+#include <libloaderapi.h>
+#include <ws2spi.h>
+#include <guiddef.h>
+#include <ndsupport.h>
+#include <ndstatus.h>
+#include <ndspi.h>
 
 namespace coro_io {
 
+using size_type = ULONG;
+using result_type = HRESULT;
+
 // command types
-enum mr_acccess_flag {
+enum mr_acccess_flag_t {
   mr_access_local_write,
   mr_access_remote_read,
   mr_access_remote_write,
 };
 
-struct nd2_cq_init_attr {
-  HANDLE overlapped_handle_;
-  USHORT processor_group_;
-  KAFFINITY processor_affinity_;
+// configuration type to initialize the shared state
+// TODO ... align with ibverbs
+struct nd_connector_config_t {
+  size_type cqe_ = 64;
+  size_type max_send_wr_ = 32;
+  size_type max_recv_wr_ = 32;
+  size_type max_send_sge_ = 8;
+  size_type max_recv_sge_ = 8;
+  size_type max_inline_data_ = 16;
+  size_type inbound_read_limit_ = 0;
+  size_type outbound_read_limit_ = 0;
 };
 
-struct nd2_cq_notify_attr {
-  ULONG type_;
-  LPOVERLAPPED op_;
-};
+}
 
-struct nd2_qp_init_attr {
-  void* qp_context_;
-  IND2CompletionQueue* rcq_;  // receive completion queue
-  IND2CompletionQueue* icq_;  // initiator completion queue
-  ULONG max_send_wr_;         // max send work requests
-  ULONG max_recv_wr_;         // max recv work requests
-  ULONG max_send_sge_;        // max send num of scatter/gather elements
-  ULONG max_recv_sge_;        // max recv num of scatter/gather elements
-  ULONG max_inline_data_;     // max payload data size in a packet
-};
+// types not used directly
+#include "ylt/coro_io/networkdirect/detail/nd_impl_types.hpp"
 
-// native type definition for the { windows, network-direct } platform
-using result_type = HRESULT;
-using native_context_config_t = ND2_ADAPTER_INFO;
-using native_context_t = IND2Adapter;
-struct native_pd_t {
-  native_context_t* context_;
-  detail::unique_handle_t sync_handle_;
-};
-using native_qp_t = IND2QueuePair;
-using native_cq_t = IND2CompletionQueue;
-using native_mr_t = IND2MemoryRegion;
-using native_sge_t = ND2_SGE;
-using native_wc_t = ND2_RESULT;
-using native_qp_init_attr = nd2_qp_init_attr;
-using native_cq_init_attr = nd2_cq_init_attr;
-using native_cq_notify_attr = nd2_cq_notify_attr;
+namespace coro_io {
 
 // nd device
-struct nd_device_t {
-  detail::nd_provider_ptr provider_;
-  detail::nd2_adapter_ptr adapter_;
-  std::unique_ptr<native_pd_t> pd_;
-  std::string name_;
-  native_context_config_t info_;
-};
-using nd_device_ptr = std::shared_ptr<nd_device_t>;
-using native_device_t = nd_device_t;
-using native_device_ptr = nd_device_ptr;
+using nd_context_config_t = detail::native_context_config_t;
+using nd_device_t = detail::native_device_t;
+using nd_device_ptr = detail::native_device_ptr;
 
 }  // namespace coro_io

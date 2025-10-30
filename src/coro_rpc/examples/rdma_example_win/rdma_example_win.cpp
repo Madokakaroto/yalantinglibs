@@ -16,6 +16,7 @@
 #include <memory>
 #include <thread>
 #include "ylt/coro_io/networkdirect/nd_connector.hpp"
+#include "ylt/coro_io/networkdirect/nd_mr.hpp"
 
 int main() {
   auto const& device_manager =

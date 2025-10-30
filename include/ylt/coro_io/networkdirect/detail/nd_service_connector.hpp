@@ -91,20 +91,9 @@ public: // rule of five, used by asio::detail::io_object_impl
     }
   }
 
-public: // public interfaces on implementation type
+public: // public interfaces
   bool has_valid_state(implementation_type const& impl) const {
     return impl.state_ != nullptr;
-  }
-
-  asio::error_code set_state(implementation_type& impl,
-                             shared_state_ptr const& shared_state,
-                             asio::error_code& ec) const {
-    if (is_open(impl)) {
-      ec = asio::error::already_open;
-      ASIO_ERROR_LOCATION(ec);
-      return ec;
-    }
-    close_for_destruction(impl);
   }
 
   bool is_open(implementation_type const& impl) const { 
@@ -140,19 +129,6 @@ public: // public interfaces on implementation type
       return ec;
     }
     do_open(impl, ec);
-    if (ec) {
-      return ec;
-    }
-  }
-
-  asio::error_code do_open(shared_state_ptr const& shared_state,
-                           asio::error_code& ec) {
-    register_state(shared_state, ec);
-    if (ec) {
-      ASIO_ERROR_LOCATION(ec);
-      return ec;
-    }
-    ec.clear();
     return ec;
   }
 
@@ -176,14 +152,23 @@ public: // public interfaces on implementation type
     return ec;
   }
 
- public: // public interfaces on shared state type
-  asio::error_code register_state(shared_state_ptr& shared_state,
-                                  asio::error_code& ec) {
-    assert(shared_state->is_opened_ == false);
-    this->scheduler_.register_handle(shared_state->overlapped_handle_.get(),
-                                     ec);
-    shared_state->is_opened_ = true;
-    return ec;
+public: // async interfaces
+  template <typename Handler, typename IoExecutor>
+  void async_connect(implementation_type& impl, endpoint_type const& endpoint,
+                     Handler& handler, IoExecutor const& io_ex) {
+    // TODO ... cancellation
+    using op = nd_connect_op<Handler, IoExecutor>;
+    typename op::ptr p = {asio::detail::addressof(handler),
+                          op::ptr::allocate(handler), 0};
+
+    auto& connector = impl.state_->connector_;
+    p.p = new (p.v) op{connector.Get(), handler, io_ex};
+
+    // ASIO_HANDLER_CREATION((reactor_.context(), *p.p, "socket",
+    //   &impl, impl.socket_, "async_accept"));
+
+    start_connect_op(impl, endpoint, p.p);
+    p.v = p.p = 0;
   }
 
 private:
@@ -198,6 +183,56 @@ private:
    }
   }
 
+  asio::error_code register_state(shared_state_ptr& shared_state,
+                                  asio::error_code& ec) {
+    assert(shared_state->is_opened_ == false);
+    this->scheduler_.register_handle(shared_state->overlapped_handle_.get(),
+                                     ec);
+    shared_state->is_opened_ = true;
+    return ec;
+  }
+
+  asio::error_code do_open(shared_state_ptr const& shared_state,
+                           asio::error_code& ec) {
+    register_state(shared_state, ec);
+    if (ec) {
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    ec.clear();
+    return ec;
+  }
+
+  void start_connect_op(implementation_type& impl,
+                        endpoint_type const& endpoint, nd_connect_op_base* op) {
+    this->scheduler_.work_started();
+    auto const& state = impl.state_;
+    // parse device local endpoint
+    using address_type = decltype(endpoint.address());
+    endpoint_type endpoint_to_bind{
+        address_type::from_string(state->device_->name_), endpoint.port()};
+    // bind device local endpoint with the connector
+    asio::error_code ec{};
+    bind_addr(impl, endpoint_to_bind.data(), endpoint_to_bind.size(),
+              ec);
+    if (ec) {
+      this->scheduler_.on_completion(op, ec);
+      return;
+    }
+    auto const& config = state->config_;
+    // call overlapped connect interface
+    connect(state->connector_.Get(), state->qp_.Get(),
+            endpoint.data(), endpoint.size(),
+            config.inbound_read_limit_,
+            config.outbound_read_limit_, 
+            nullptr, 0, op, ec);
+    if (ec) {
+      this->scheduler_.on_completion(op, ec);
+      return;
+    }
+    // notify this async operation on pending
+    this->scheduler_.on_pending(op);
+  }
 };
 
 }

@@ -148,7 +148,7 @@ inline native_qp_t* create_qp(native_pd_t* pd,
 }
 
 /// memory region ops
-inline ULONG to_native_access_flag(mr_acccess_flag access_flag,
+inline ULONG to_native_access_flag(mr_acccess_flag_t access_flag,
                                    int extra_access_flag) {
   ULONG native_access_flag = 0;
   if (access_flag & mr_access_local_write) {
@@ -166,7 +166,7 @@ inline ULONG to_native_access_flag(mr_acccess_flag access_flag,
 
 // register memory region
 inline native_mr_t* reg_mr(native_pd_t* pd, void* addr, size_t length,
-                           mr_acccess_flag access_flag, int extra_access_flag,
+                           mr_acccess_flag_t access_flag, int extra_access_flag,
                            asio::error_code& ec) {
   assert(pd && pd->context_);
   nd2_memory_region_ptr result{};
