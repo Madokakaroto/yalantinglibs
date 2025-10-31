@@ -2,6 +2,10 @@
 
 #include <memory>
 #include <string>
+#include <array>
+#include <numeric>
+#include <ranges>
+#include <iterator>
 #include <winnt.h>
 #include <wrl/client.h>
 #include <libloaderapi.h>
@@ -34,6 +38,11 @@ struct nd_connector_config_t {
   size_type max_inline_data_ = 16;
   size_type inbound_read_limit_ = 0;
   size_type outbound_read_limit_ = 0;
+};
+
+struct nd_remote_addr_t {
+  std::uint64_t addr_;
+  std::uint32_t token_;
 };
 
 }

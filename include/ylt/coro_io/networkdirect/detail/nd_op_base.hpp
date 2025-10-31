@@ -64,4 +64,20 @@ private:
   }
 };
 
+class nd_verbs_op_base {
+ public:
+  // to use op_queue
+  friend class op_queue_access;
+  // the io complete function
+  using complete_func = void(*)(void*, nd_verbs_op_base*, asio::error_code const&, std::size_t);
+  // type of io operation
+  enum class op_type {
+    post_recv = 0,
+    post_send,
+    read,
+    write,
+    max_ops,
+  };
+};
+
 }

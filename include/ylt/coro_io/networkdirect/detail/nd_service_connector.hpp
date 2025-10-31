@@ -10,6 +10,8 @@
 #include "ylt/coro_io/networkdirect/detail/nd_ops_cm.hpp"
 #include "ylt/coro_io/networkdirect/detail/nd_op_connect.hpp"
 #include "ylt/coro_io/networkdirect/detail/nd_op_accept.hpp"
+#include "ylt/coro_io/networkdirect/nd_mr.hpp"
+#include "ylt/coro_io/networkdirect/nd_buffer.hpp"
 
 namespace coro_io::detail {
 
