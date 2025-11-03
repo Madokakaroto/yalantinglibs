@@ -30,6 +30,7 @@ enum mr_acccess_flag_t {
 // configuration type to initialize the shared state
 // TODO ... align with ibverbs
 struct nd_connector_config_t {
+  size_type poll_wc_count = 4;
   size_type cqe_ = 64;
   size_type max_send_wr_ = 32;
   size_type max_recv_wr_ = 32;

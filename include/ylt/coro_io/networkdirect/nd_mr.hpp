@@ -17,8 +17,8 @@ class nd_mr_t {
 
  public:
   explicit nd_mr_t(nd_device_ptr const& device, void* addr, std::size_t length,
-                 mr_acccess_flag_t flag = mr_access_remote_write,
-                 int extra_flag = 0)
+                   mr_acccess_flag_t flag = mr_access_remote_write,
+                   int extra_flag = 0)
       : mr_(throw_reg_mr(device, addr, length, flag, extra_flag))
       , addr_(addr)
       , length_(length)
@@ -156,7 +156,7 @@ class nd_mr_t {
 
   class mutable_buffer {
    public:
-     using nd_buffer_tag = detail::nd_mutable_buffer_tag;
+    using nd_buffer_tag = detail::nd_mutable_buffer_tag;
 
    private:
     nd_mr_t const& mr_;
@@ -212,7 +212,7 @@ class nd_mr_t {
 
 public:
   mutable_buffer slice(std::size_t offset, std::size_t length) {
-   if (is_in_mr(offset, length)) {
+    if (is_in_mr(offset, length)) {
       return mutable_buffer{
           *this, reinterpret_cast<uint8_t*>(this->addr()) + offset, length};
     }

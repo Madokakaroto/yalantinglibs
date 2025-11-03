@@ -96,7 +96,23 @@ inline void buffers2sglist(BufferSequence const& bs, nd_sglist_t& sglist) {
   }
 }
 
+template <mr_buffer_sequence BufferSequence>
+inline std::size_t buffer_size(BufferSequence const& buffers) noexcept {
+  return std::reduce(buffer_sequence_begin(buffers),
+                     buffer_sequence_end(buffers), std::size_t{0},
+                     [](std::size_t acc, auto const& buffer) {
+                       return acc + buffer.length();
+                     });
 }
 
+template <mr_buffer_sequence BufferSequence>
+inline bool all_empty(BufferSequence const& buffers) noexcept {
+  return std::ranges::all_of(buffer_sequence_begin(buffers),
+                             buffer_sequence_end(buffers),
+                             [](auto const& buffer) {
+                               return buffer.length() == 0;
+                             });
+}
 
+}
 }

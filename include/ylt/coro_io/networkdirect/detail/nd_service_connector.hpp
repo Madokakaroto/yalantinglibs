@@ -8,10 +8,15 @@
 #include "ylt/coro_io/networkdirect/detail/nd_service_base.hpp"
 #include "ylt/coro_io/networkdirect/detail/nd_ops_verbs.hpp"
 #include "ylt/coro_io/networkdirect/detail/nd_ops_cm.hpp"
-#include "ylt/coro_io/networkdirect/detail/nd_op_connect.hpp"
-#include "ylt/coro_io/networkdirect/detail/nd_op_accept.hpp"
 #include "ylt/coro_io/networkdirect/nd_mr.hpp"
 #include "ylt/coro_io/networkdirect/nd_buffer.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_op_notify_wr.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_op_complete.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_op_connect.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_op_send.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_op_recv.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_op_write.hpp"
+#include "ylt/coro_io/networkdirect/detail/nd_op_read.hpp"
 
 namespace coro_io::detail {
 
@@ -43,10 +48,14 @@ public:
     shared_state_ptr state_;
   };
 
+protected:
+  asio::error_code success_ec_;
+
 public:
   explicit nd_iocp_connector_service(asio::execution_context& context)
     : base_type(context)
-    , nd_service_base(context) {
+    , nd_service_base(context)
+    , success_ec_() {
 
   }
 
@@ -173,6 +182,116 @@ public: // async interfaces
     p.v = p.p = 0;
   }
 
+  template <mr_mutable_buffer_sequence BufferSequence,
+            typename Handler, typename IoExecutor>
+  void async_recv(implementation_type& impl, BufferSequence const& buffers,
+                  Handler& handler, IoExecutor const& io_ex) {
+    typename asio::associated_cancellation_slot<Handler>::type slot =
+        asio::get_associated_cancellation_slot(handler);
+
+    // Allocate and construct an operation to wrap the handler.
+    using op = nd_recv_op<BufferSequence, Handler, IoExecutor>;
+    typename op::ptr p = {asio::detail::addressof(handler),
+                          op::ptr::allocate(handler), 0};
+
+    // construct operation
+    p.p = new (p.v) op{success_ec_, buffers, handler, io_ex};
+
+    // Optionally register for per-operation cancellation.
+    if (slot.is_connected()) {
+    }
+
+    // TODO ...
+    // ASIO_HANDLER_CREATION((this->context(), *p.p, "rdma", &impl, impl.cm_id_,
+    // "async_recv"));
+
+    start_recv_op(impl, p.p);
+    p.v = p.p = 0;
+  }
+
+  template <mr_const_buffer_sequence BufferSequence, typename Handler,
+            typename IoExecutor>
+  void async_send(implementation_type& impl, BufferSequence const& buffers,
+                  Handler& handler, IoExecutor const& io_ex) {
+    typename asio::associated_cancellation_slot<Handler>::type slot =
+        asio::get_associated_cancellation_slot(handler);
+
+    // Allocate and construct an operation to wrap the handler.
+    using op = nd_send_op<BufferSequence, Handler, IoExecutor>;
+    typename op::ptr p = {asio::detail::addressof(handler),
+                          op::ptr::allocate(handler), 0};
+
+    // construct operation
+    p.p = new (p.v) op{success_ec_, buffers, handler, io_ex};
+
+    // Optionally register for per-operation cancellation.
+    if (slot.is_connected()) {
+    }
+
+    // TODO ...
+    // ASIO_HANDLER_CREATION((this->context(), *p.p, "rdma", &impl, impl.cm_id_,
+    // "async_send"));
+
+    start_send_op(impl, p.p);
+    p.v = p.p = 0;
+  }
+
+  template <mr_mutable_buffer_sequence BufferSequence,
+            typename Handler, typename IoExecutor>
+  void async_read(implementation_type& impl, BufferSequence const& buffers,
+                  nd_remote_addr_t const& remote_addr, Handler& handler,
+                  IoExecutor const& io_ex) {
+    typename asio::associated_cancellation_slot<Handler>::type slot =
+        asio::get_associated_cancellation_slot(handler);
+
+    // Allocate and construct an operation to wrap the handler.
+    using op = nd_read_op<BufferSequence, Handler, IoExecutor>;
+    typename op::ptr p = {asio::detail::addressof(handler),
+                          op::ptr::allocate(handler), 0};
+
+    // construct operation
+    p.p = new (p.v) op{success_ec_, buffers, remote_addr, handler, io_ex};
+
+    // Optionally register for per-operation cancellation.
+    if (slot.is_connected()) {
+    }
+
+    // TODO ...
+    // ASIO_HANDLER_CREATION((this->context(), *p.p, "rdma", &impl, impl.cm_id_,
+    // "async_read"));
+
+    start_read_op(impl, p.p);
+    p.v = p.p = 0;
+  }
+
+  template <mr_const_buffer_sequence BufferSequence,
+            typename Handler, typename IoExecutor>
+  void async_read(implementation_type& impl, BufferSequence const& buffers,
+                  nd_remote_addr_t const& remote_addr, Handler& handler,
+                  IoExecutor const& io_ex) {
+    typename asio::associated_cancellation_slot<Handler>::type slot =
+        asio::get_associated_cancellation_slot(handler);
+
+    // Allocate and construct an operation to wrap the handler.
+    using op = nd_write_op<BufferSequence, Handler, IoExecutor>;
+    typename op::ptr p = {asio::detail::addressof(handler),
+                          op::ptr::allocate(handler), 0};
+
+    // construct operation
+    p.p = new (p.v) op{success_ec_, buffers, remote_addr, handler, io_ex};
+
+    // Optionally register for per-operation cancellation.
+    if (slot.is_connected()) {
+    }
+
+    // TODO ...
+    // ASIO_HANDLER_CREATION((this->context(), *p.p, "rdma", &impl, impl.cm_id_,
+    // "async_write"));
+
+    start_write_op(impl, p.p);
+    p.v = p.p = 0;
+  }
+
 private:
   void close_for_destruction(implementation_type& impl) {
    if (has_valid_state(impl)) {
@@ -205,6 +324,11 @@ private:
     return ec;
   }
 
+  nd_sglist_t& get_sglist() {
+    static thread_local nd_sglist_t static_sg_list;
+    return static_sg_list;
+  }
+
   void start_connect_op(implementation_type& impl,
                         endpoint_type const& endpoint, nd_connect_op_base* op) {
     this->scheduler_.work_started();
@@ -234,6 +358,162 @@ private:
     }
     // notify this async operation on pending
     this->scheduler_.on_pending(op);
+  }
+
+  template <typename RecvOpType>
+  void start_recv_op(implementation_type& impl, RecvOpType* op) {
+    assert(op);
+    auto const& buffers = op->get_buffer_sequence();
+    if (all_empty(buffers)) {
+      return;
+    }
+
+    // TODO... error happens when network direct using local sglist object
+    // temp solution: to use the thread local sglist object reference
+    nd_sglist_t& sglist = get_sglist();
+    // translate buffer sequence to sglist
+    buffers2sglist(buffers, sglist);
+
+    // invoke the verbs operation
+    verbs_ops::post_recv(impl.state_->qp_.Get(), op, sglist.data(),
+                         sglist.size(), op->ec_);
+    if (op->ec_) [[unlikely]] {
+      post_immediate_completion(op);
+    }
+    else {
+      work_started(impl, op);
+    }
+  }
+
+  template <typename SendOpType>
+  void start_send_op(implementation_type& impl, SendOpType* op) {
+    assert(op);
+    auto const& buffers = op->get_buffer_sequence();
+    if (all_empty(buffers)) {
+      return;
+    }
+
+    // TODO... error happens when network direct using local sglist object
+    // temp solution: to use the thread local sglist object reference
+    nd_sglist_t& sglist = get_sglist();
+    // translate buffer sequence to sglist
+    buffers2sglist(buffers, sglist);
+
+    // invoke the verbs operation
+    // TODO ... send flag
+    verbs_ops::post_send(impl.state_->qp_.Get(), op, sglist.data(),
+                         sglist.size(), 0, op->ec_);
+    if (op->ec_) [[unlikely]] {
+      post_immediate_completion(op);
+    }
+    else {
+      work_started(impl, op);
+    }
+  }
+
+  template <typename ReadOpType>
+  void start_read_op(implementation_type& impl, ReadOpType* op) {
+    assert(op);
+    auto const& buffers = op->get_buffer_sequence();
+    if (all_empty(buffers)) {
+      return;
+    }
+
+    // TODO... error happens when network direct using local sglist object
+    // temp solution: to use the thread local sglist object reference
+    nd_sglist_t& sglist = get_sglist();
+    // translate buffer sequence to sglist
+    buffers2sglist(buffers, sglist);
+
+    // invoke the verbs operation
+    // TODO ... read flag
+    auto const& remote_addr = op->get_remote_addr();
+    verbs_ops::post_read(impl.state_->qp_.Get(), op, sglist.data(),
+                         sglist.size(), remote_addr.addr_, remote_addr.token_,
+                         0, op->ec_);
+    if (op->ec_) [[unlikely]] {
+      post_immediate_completion(op);
+    }
+    else {
+      work_started(impl, op);
+    }
+  }
+
+  template <typename WriteOpType>
+  void start_write_op(implementation_type& impl, WriteOpType* op) {
+    assert(op);
+    auto const& buffers = op->get_buffer_sequence();
+    if (all_empty(buffers)) {
+      return;
+    }
+
+    // TODO... error happens when network direct using local sglist object
+    // temp solution: to use the thread local sglist object reference
+    nd_sglist_t& sglist = get_sglist();
+    // translate buffer sequence to sglist
+    buffers2sglist(buffers, sglist);
+
+    // invoke the verbs operation
+    // TODO ... write flag
+    auto const& remote_addr = op->get_remote_addr();
+    verbs_ops::post_write(impl.state_->qp_.Get(), op, sglist.data(),
+                          sglist.size(), remote_addr.addr_, remote_addr.token_,
+                          0, op->ec_);
+    if (op->ec_) [[unlikely]] {
+      post_immediate_completion(op);
+    }
+    else {
+      work_started(impl, op);
+    }
+  }
+
+  void work_started(implementation_type& impl, nd_notify_wr_op* notify_op) {
+    // invoke notify_cq
+    asio::error_code ec{};
+    native_cq_notify_attr notify_attr{
+        .type_ = ND_CQ_NOTIFY_ANY,
+        .op_ = notify_op,
+    };
+    verbs_ops::notify_cq(impl.state_->cq_.Get(), notify_attr, ec);
+
+    // work started
+    this->scheduler_.work_started();
+
+    // process on pending
+    if (ec && ec == nd_errc::pending) {
+      // if notify is on pending, wait for iocp to notify completion
+      scheduler_.on_pending(notify_op);
+      return;
+      // if notify is just in completion, post to scheduler
+    }
+
+    // post to scheduler
+    this->scheduler_.on_completion(notify_op, ec, 0L);
+  }
+
+  void work_started(implementation_type& impl, nd_verbs_op_base* started_op) {
+    // using associate allocator to allocate a memory for notify op
+    nd_notify_wr_op::Handler handler{};
+    nd_notify_wr_op::ptr p = {asio::detail::addressof(handler),
+                              nd_notify_wr_op::ptr::allocate(handler),
+                              0};
+    p.p = new (p.v) nd_notify_wr_op{impl.state_};
+    work_started(impl, p.p);
+    p.v = p.p = nullptr;
+  }
+
+  void post_immediate_completion(nd_verbs_op_base* error_op) {
+    // using associate allocator to allocate a memory for error op
+    nd_complete_op::Handler handler{};
+    nd_complete_op::ptr p = {asio::detail::addressof(handler),
+                             nd_complete_op::ptr::allocate(handler),
+                             0};
+    // placement new on that memory block
+    p.p = new (p.v) nd_complete_op{error_op};
+
+    // post to io context, not continuation
+    this->scheduler_.post_immediate_completion(p.p, false);
+    p.v = p.p = 0;
   }
 };
 
