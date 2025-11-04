@@ -17,6 +17,7 @@ public:
 private:
   nd_verbs_op_base* op_;
 
+public:
   explicit nd_complete_op(nd_verbs_op_base* verbs_op)
       : asio::detail::operation(&nd_complete_op::do_complete)
       , op_(verbs_op){

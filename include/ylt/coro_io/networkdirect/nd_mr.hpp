@@ -41,14 +41,14 @@ class nd_mr_t {
 
   std::uint32_t local_key() const {
     if (!mr_) {
-      asio::detail::throw_error(nd_errc::ndext_invalid_mr);
+      asio::detail::throw_error(nd_errc::ext_invalid_mr);
     }
     return mr_->GetLocalToken();
   }
 
   std::uint32_t remote_key() const {
     if (!mr_) {
-      asio::detail::throw_error(nd_errc::ndext_invalid_mr);
+      asio::detail::throw_error(nd_errc::ext_invalid_mr);
     }
     return mr_->GetRemoteToken();
   }

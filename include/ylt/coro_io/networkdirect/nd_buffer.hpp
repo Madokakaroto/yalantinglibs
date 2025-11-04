@@ -38,12 +38,6 @@ concept mr_buffer_sequence = requires(BufferSequence bs) {
   { *bs.cend() } -> mr_buffer_ref;
   { std::distance(bs.cbegin(), bs.cend()) };
 };
-template <typename AdaptedBufferSequence>
-concept mr_adapted_buffer_sequence = requires(AdaptedBufferSequence abs) {
-  { *buffer_sequence_begin(abs) } -> mr_buffer_ref;
-  { *buffer_sequence_end(abs) } -> mr_buffer_ref;
-  { std::distance(buffer_sequence_end(abs), buffer_sequence_end(abs)) };
-};
 
 // buffer sequence begin & end
 template <mr_buffer_sequence BufferSequence>
@@ -57,6 +51,14 @@ inline decltype(auto) buffer_sequence_end(BufferSequence const& bs) noexcept(
     noexcept(bs.cend())) {
   return bs.cend();
 }
+
+/// adapted buffer sequence
+template <typename AdaptedBufferSequence>
+concept mr_adapted_buffer_sequence = requires(AdaptedBufferSequence abs) {
+  { *buffer_sequence_begin(abs) } -> mr_buffer_ref;
+  { *buffer_sequence_end(abs) } -> mr_buffer_ref;
+  { std::distance(buffer_sequence_end(abs), buffer_sequence_end(abs)) };
+};
 
 /// const buffer sequence
 template <typename BufferSequence>
@@ -77,7 +79,7 @@ concept mr_mutable_buffer_sequence = requires(BufferSequence bs) {
 namespace detail {
 
 /// buffer sequence to sge
-template <mr_buffer_sequence BufferSequence>
+template <mr_adapted_buffer_sequence BufferSequence>
 inline void buffers2sglist(BufferSequence const& bs, nd_sglist_t& sglist) {
   auto const begin = buffer_sequence_begin(bs);
   auto const end = buffer_sequence_end(bs);
@@ -89,14 +91,14 @@ inline void buffers2sglist(BufferSequence const& bs, nd_sglist_t& sglist) {
     {
       auto const buffer = begin + loop;
       auto& sge = sglist[loop];
-      sge.Buffer = buffer->addr();
+      sge.Buffer = const_cast<void*>(buffer->addr());
       sge.BufferLength = buffer->length();
       sge.MemoryRegionToken = buffer->local_key();
     }
   }
 }
 
-template <mr_buffer_sequence BufferSequence>
+template <mr_adapted_buffer_sequence BufferSequence>
 inline std::size_t buffer_size(BufferSequence const& buffers) noexcept {
   return std::reduce(buffer_sequence_begin(buffers),
                      buffer_sequence_end(buffers), std::size_t{0},
@@ -105,7 +107,7 @@ inline std::size_t buffer_size(BufferSequence const& buffers) noexcept {
                      });
 }
 
-template <mr_buffer_sequence BufferSequence>
+template <mr_adapted_buffer_sequence BufferSequence>
 inline bool all_empty(BufferSequence const& buffers) noexcept {
   return std::ranges::all_of(buffer_sequence_begin(buffers),
                              buffer_sequence_end(buffers),

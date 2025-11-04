@@ -131,8 +131,6 @@ using native_device_ptr = std::shared_ptr<native_device_t>;
 
 // shared state for a rdma connection
 struct nd_connector_state_t {
-  // is opened
-  bool is_opened_;
   // overlapped handle to receive IO completion
   unique_handle_t overlapped_handle_;
   // the network-direect connector interface

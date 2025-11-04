@@ -124,7 +124,7 @@ struct nd_two_sided_op;
 template <typename BufferSeuqence>
 struct nd_one_sided_op;
 
-template <mr_buffer_sequence BufferSequence>
+template <mr_adapted_buffer_sequence BufferSequence>
 class nd_two_sided_op<BufferSequence> : public nd_verbs_op_base {
  public:
   using complete_func = nd_verbs_op_base::complete_func;
@@ -136,9 +136,9 @@ class nd_two_sided_op<BufferSequence> : public nd_verbs_op_base {
  public:
   nd_two_sided_op(complete_func complete_cb,
                   asio::error_code const& success_ec,
-                  BufferSequence&& buffer_seq)
+                  BufferSequence const& buffer_seq)
       : nd_verbs_op_base(complete_cb, success_ec)
-      , buffer_seq_(std::move(buffer_seq)) {
+      , buffer_seq_(buffer_seq) {
   }
 
   BufferSequence const& get_buffer_sequence() const noexcept {
@@ -160,10 +160,10 @@ class nd_one_sided_op : public nd_two_sided_op<BufferSequence> {
  public:
   nd_one_sided_op(complete_func complete_cb,
                   asio::error_code const& success_ec,
-                  BufferSequence&& buffer_seq,
+                  BufferSequence const& buffer_seq,
                   nd_remote_addr_t const& remote_addr) 
     : base_type(complete_cb, success_ec, buffer_seq)
-    , buffer_seq_(std::move(buffer_seq))
+    , buffer_seq_(buffer_seq)
     , remote_addr_(remote_addr){
   }
 

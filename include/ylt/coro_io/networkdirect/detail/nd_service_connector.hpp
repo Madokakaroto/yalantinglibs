@@ -103,43 +103,29 @@ public: // rule of five, used by asio::detail::io_object_impl
   }
 
 public: // public interfaces
-  bool has_valid_state(implementation_type const& impl) const {
+  bool has_state(implementation_type const& impl) const {
     return impl.state_ != nullptr;
   }
 
-  bool is_open(implementation_type const& impl) const { 
-    return has_valid_state(impl) && impl.state_->is_opended;
-  }
-
-  asio::error_code open(implementation_type& impl,
-                        shared_state_ptr const& shared_state,
-                        asio::error_code& ec) {
-    if (is_open(impl)) {
-      ec = asio::error::already_open;
+  asio::error_code register_state(implementation_type& impl,
+                                  shared_state_ptr const& shared_state,
+                                  asio::error_code& ec) {
+    if (has_state(impl)) {
+      ec = nd_errc::ext_already_registered;
       ASIO_ERROR_LOCATION(ec);
       return ec;
     }
-    do_open(shared_state, ec);
-    if (ec) {
-      return ec;
-    }
-    close_for_destruction(impl);
-    impl.state_ = shared_state;
-    return ec;
-  }
-
-  asio::error_code open(implementation_type& impl, asio::error_code& ec) {
-    if (!has_valid_state(impl)) {
-      ec = nd_errc::ndext_invalid_connector;
+    if (!shared_state) {
+      ec = nd_errc::ext_invalid_connector;
       ASIO_ERROR_LOCATION(ec);
       return ec;
     }
-    if (is_open(impl)) {
-      ec = asio::error::already_open;
-      ASIO_ERROR_LOCATION(ec);
-      return ec;
+    this->scheduler_.register_handle(shared_state->overlapped_handle_.get(),
+                                     ec);
+    if (!ec)
+    {
+      impl.state_ = shared_state;
     }
-    do_open(impl, ec);
     return ec;
   }
 
@@ -151,12 +137,12 @@ public: // public interfaces
                              sockaddr const* addrin, std::size_t addr_size,
                              asio::error_code& ec) {
     if (impl.state_ == nullptr || impl.state_->connector_) {
-      ec = nd_errc::ndext_invalid_connector;
+      ec = nd_errc::ext_invalid_connector;
       ASIO_ERROR_LOCATION(ec);
       return ec;
     }
 
-    bind_addr(impl.state_->connector_.Get(), addrin, addr_size, ec);
+    detail::bind_addr(impl.state_->connector_.Get(), addrin, addr_size, ec);
     if (ec) {
       ASIO_ERROR_LOCATION(ec);
     }
@@ -266,7 +252,7 @@ public: // async interfaces
 
   template <mr_const_buffer_sequence BufferSequence,
             typename Handler, typename IoExecutor>
-  void async_read(implementation_type& impl, BufferSequence const& buffers,
+  void async_write(implementation_type& impl, BufferSequence const& buffers,
                   nd_remote_addr_t const& remote_addr, Handler& handler,
                   IoExecutor const& io_ex) {
     typename asio::associated_cancellation_slot<Handler>::type slot =
@@ -294,7 +280,7 @@ public: // async interfaces
 
 private:
   void close_for_destruction(implementation_type& impl) {
-   if (has_valid_state(impl)) {
+   if (has_state(impl)) {
      // ASIO_HANDLER_OPERATION((context(), "handle", &impl,
      // reinterpret_cast<uintmax_t>(impl.connector_.Get()), "close"));
      impl.state_->qp_.Reset(); 
@@ -302,26 +288,6 @@ private:
      impl.state_->connector_.Reset();
      impl.state_->overlapped_handle_.reset();
    }
-  }
-
-  asio::error_code register_state(shared_state_ptr& shared_state,
-                                  asio::error_code& ec) {
-    assert(shared_state->is_opened_ == false);
-    this->scheduler_.register_handle(shared_state->overlapped_handle_.get(),
-                                     ec);
-    shared_state->is_opened_ = true;
-    return ec;
-  }
-
-  asio::error_code do_open(shared_state_ptr const& shared_state,
-                           asio::error_code& ec) {
-    register_state(shared_state, ec);
-    if (ec) {
-      ASIO_ERROR_LOCATION(ec);
-      return ec;
-    }
-    ec.clear();
-    return ec;
   }
 
   nd_sglist_t& get_sglist() {

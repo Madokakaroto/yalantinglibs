@@ -44,7 +44,7 @@ protected:
         o->stage_ = stage_t::done;
         return status_t::completed;
       default:
-        ec = nd_errc::ndext_already_stopt;
+        ec = nd_errc::ext_already_stopt;
         o->stage_ = stage_t::error;
         return status_t::completed;
     }

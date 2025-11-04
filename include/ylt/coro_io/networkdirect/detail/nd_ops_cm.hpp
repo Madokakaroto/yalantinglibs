@@ -166,13 +166,20 @@ inline nd_connector_state_ptr create_connector_state(
 
   // exceptional-safty codes
   auto shared_state = std::make_shared<nd_connector_state_t>();
-  shared_state->is_opened_ = false;
   shared_state->overlapped_handle_ = std::move(overlapped_handle);
   shared_state->connector_ = std::move(connector);
   shared_state->cq_ = std::move(cq);
   shared_state->qp_ = std::move(qp);
   shared_state->config_ = config;
   return shared_state;
+}
+
+inline nd_connector_state_ptr create_connector_state(
+  nd_device_ptr const& device, nd_connector_config_t const& config) {
+  asio::error_code ec{};
+  auto result = create_connector_state(device, config, ec);
+  asio::detail::throw_error(ec);
+  return result;
 }
 
 inline bool is_config_valid(nd_device_ptr const& device,

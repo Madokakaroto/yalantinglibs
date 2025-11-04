@@ -1,6 +1,13 @@
 #pragma once
 
+#include "asio/detail/bind_handler.hpp"
+#include "asio/detail/fenced_block.hpp"
+#include "asio/detail/handler_alloc_helpers.hpp"
+#include "asio/detail/handler_invoke_helpers.hpp"
+#include "asio/detail/handler_work.hpp"
+#include "asio/detail/memory.hpp"
 #include "ylt/coro_io/networkdirect/detail/nd_op_base.hpp"
+#include "asio/detail/push_options.hpp"
 
 namespace coro_io::detail {
 
@@ -67,3 +74,5 @@ class nd_recv_op final : public nd_two_sided_op<BufferSequence> {
 };
 
 }
+
+#include "asio/detail/pop_options.hpp"

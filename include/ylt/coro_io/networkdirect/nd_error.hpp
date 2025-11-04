@@ -6,7 +6,98 @@
 #include "asio.hpp"
 #include "ndstatus.h"
 
+#ifndef NDEXT_NO_AVAILABLE_ADDRESS
+#define NDEXT_NO_AVAILABLE_ADDRESS -1
+#endif
+#ifndef NDEXT_ALREADY_STOPT
+#define NDEXT_ALREADY_STOPT -2
+#endif
+#ifndef NDEXT_INVALID_LISTENER
+#define NDEXT_INVALID_LISTENER -3
+#endif
+#ifndef NDEXT_INVALID_CONNECTOR
+#define NDEXT_INVALID_CONNECTOR -4
+#endif
+#ifndef NDEXT_INVALID_QP
+#define NDEXT_INVALID_QP -5
+#endif
+#ifndef NDEXT_INVALID_CQ
+#define NDEXT_INVALID_CQ -6
+#endif
+#ifndef NDEXT_INVALID_MR
+#define NDEXT_INVALID_MR -7
+#endif
+#ifndef NDEXT_INVALID_DEVICE
+#define NDEXT_INVALID_DEVICE -8
+#endif
+#ifndef NDEXT_ALREADY_REGISTERED
+#define NDEXT_ALREADY_REGISTERED -9
+#endif
+#ifndef NDEXT_NO_EXECUTOR
+#define NDEXT_NO_EXECUTOR -10
+#endif
+
+
 namespace coro_io {
+
+enum class nd_errc : int {
+  success = ND_SUCCESS,
+  timeout = ND_TIMEOUT,
+  pending = ND_PENDING,
+  buffer_overflow = ND_BUFFER_OVERFLOW,
+  device_busy = ND_DEVICE_BUSY,
+  no_more_entries = ND_NO_MORE_ENTRIES,
+  unsuccessful = ND_UNSUCCESSFUL,
+  access_violation = ND_ACCESS_VIOLATION,
+  invalid_handle = ND_INVALID_HANDLE,
+  invalid_device_request = ND_INVALID_DEVICE_REQUEST,
+  invalid_parameter = ND_INVALID_PARAMETER,
+  no_memory = ND_NO_MEMORY,
+  invalid_parameter_mix = ND_INVALID_PARAMETER_MIX,
+  data_overrun = ND_DATA_OVERRUN,
+  sharing_violation = ND_SHARING_VIOLATION,
+  insufficient_resources = ND_INSUFFICIENT_RESOURCES,
+  device_not_ready = ND_DEVICE_NOT_READY,
+  io_timeout = ND_IO_TIMEOUT,
+  not_supported = ND_NOT_SUPPORTED,
+  internal_error = ND_INTERNAL_ERROR,
+  invalid_parameter_1 = ND_INVALID_PARAMETER_1,
+  invalid_parameter_2 = ND_INVALID_PARAMETER_2,
+  invalid_parameter_3 = ND_INVALID_PARAMETER_3,
+  invalid_parameter_4 = ND_INVALID_PARAMETER_4,
+  invalid_parameter_5 = ND_INVALID_PARAMETER_5,
+  invalid_parameter_6 = ND_INVALID_PARAMETER_6,
+  invalid_parameter_7 = ND_INVALID_PARAMETER_7,
+  invalid_parameter_8 = ND_INVALID_PARAMETER_8,
+  invalid_parameter_9 = ND_INVALID_PARAMETER_9,
+  invalid_parameter_10 = ND_INVALID_PARAMETER_10,
+  canceled = ND_CANCELED,
+  remote_error = ND_REMOTE_ERROR,
+  invalid_address = ND_INVALID_ADDRESS,
+  invalid_device_state = ND_INVALID_DEVICE_STATE,
+  invalid_buffer_size = ND_INVALID_BUFFER_SIZE,
+  too_many_addresses = ND_TOO_MANY_ADDRESSES,
+  address_already_exists = ND_ADDRESS_ALREADY_EXISTS,
+  connection_refused = ND_CONNECTION_REFUSED,
+  connection_invalid = ND_CONNECTION_INVALID,
+  connection_active = ND_CONNECTION_ACTIVE,
+  network_unreachable = ND_NETWORK_UNREACHABLE,
+  host_unreachable = ND_HOST_UNREACHABLE,
+  connection_aborted = ND_CONNECTION_ABORTED,
+  device_removed = ND_DEVICE_REMOVED,
+
+  ext_no_available_address = NDEXT_NO_AVAILABLE_ADDRESS,
+  ext_already_stopt = NDEXT_ALREADY_STOPT,
+  ext_invalid_listener = NDEXT_INVALID_LISTENER,
+  ext_invalid_connector = NDEXT_INVALID_CONNECTOR,
+  ext_invalid_qp = NDEXT_INVALID_QP,
+  ext_invalid_cq = NDEXT_INVALID_CQ,
+  ext_invalid_mr = NDEXT_INVALID_MR,
+  ext_invalid_device = NDEXT_INVALID_DEVICE,
+  ext_already_registered = NDEXT_ALREADY_REGISTERED,
+  ext_no_executor = NDEXT_NO_EXECUTOR,
+};
+
 class nd_error_category : public std::error_category {
 public:
   const char* name() const noexcept override {
@@ -103,20 +194,26 @@ public:
         return "ND_CONNECTION_ABORTED";
       case ND_DEVICE_REMOVED:
         return "ND_DEVICE_REMOVED";
-      case -1:  // nd_errc::ndext_no_available_address
+      case NDEXT_NO_AVAILABLE_ADDRESS:
         return "ND_EXT no available address";
-      case -2: // nd_errc::ndext_already_stopt
+      case NDEXT_ALREADY_STOPT:
         return "ND_EXT already stopt";
-      case -3: // nd_errc::ndext_invalid_listener
+      case NDEXT_INVALID_LISTENER:
         return "ND_EXT invalid listener";
-      case -4: // nd_errc::ndext_invalid_connector
+      case NDEXT_INVALID_CONNECTOR:
         return "ND_EXT invalid connector";
-      case -5: //nd_errc::ndext_invalid_qp
+      case NDEXT_INVALID_QP:
         return "ND_EXT invalid queue pair";
-      case -6: // nd_errc::ndext_invalid_cq
+      case NDEXT_INVALID_CQ:
         return "ND_EXT invalid completion queue";
-      case -7: //nd_errc::ndext_invalid_mr
-        return "ND_EXT invalid memory region"; 
+      case NDEXT_INVALID_MR:
+        return "ND_EXT invalid memory region";
+      case NDEXT_INVALID_DEVICE:
+        return "ND_EXT invalid device";
+      case NDEXT_ALREADY_REGISTERED:
+        return "ND_EXT already registered";
+      case NDEXT_NO_EXECUTOR:
+        return "ND_EXT no executor";
       default:
         return "UNKNOWN_ND_ERROR";
     }
@@ -127,61 +224,6 @@ inline std::error_category const& get_nd_error_category() {
   static nd_error_category instance{};
   return instance;
 }
-
-enum class nd_errc : int {
-  success = ND_SUCCESS,
-  timeout = ND_TIMEOUT,
-  pending = ND_PENDING,
-  buffer_overflow = ND_BUFFER_OVERFLOW,
-  device_busy = ND_DEVICE_BUSY,
-  no_more_entries = ND_NO_MORE_ENTRIES,
-  unsuccessful = ND_UNSUCCESSFUL,
-  access_violation = ND_ACCESS_VIOLATION,
-  invalid_handle = ND_INVALID_HANDLE,
-  invalid_device_request = ND_INVALID_DEVICE_REQUEST,
-  invalid_parameter = ND_INVALID_PARAMETER,
-  no_memory = ND_NO_MEMORY,
-  invalid_parameter_mix = ND_INVALID_PARAMETER_MIX,
-  data_overrun = ND_DATA_OVERRUN,
-  sharing_violation = ND_SHARING_VIOLATION,
-  insufficient_resources = ND_INSUFFICIENT_RESOURCES,
-  device_not_ready = ND_DEVICE_NOT_READY,
-  io_timeout = ND_IO_TIMEOUT,
-  not_supported = ND_NOT_SUPPORTED,
-  internal_error = ND_INTERNAL_ERROR,
-  invalid_parameter_1 = ND_INVALID_PARAMETER_1,
-  invalid_parameter_2 = ND_INVALID_PARAMETER_2,
-  invalid_parameter_3 = ND_INVALID_PARAMETER_3,
-  invalid_parameter_4 = ND_INVALID_PARAMETER_4,
-  invalid_parameter_5 = ND_INVALID_PARAMETER_5,
-  invalid_parameter_6 = ND_INVALID_PARAMETER_6,
-  invalid_parameter_7 = ND_INVALID_PARAMETER_7,
-  invalid_parameter_8 = ND_INVALID_PARAMETER_8,
-  invalid_parameter_9 = ND_INVALID_PARAMETER_9,
-  invalid_parameter_10 = ND_INVALID_PARAMETER_10,
-  canceled = ND_CANCELED,
-  remote_error = ND_REMOTE_ERROR,
-  invalid_address = ND_INVALID_ADDRESS,
-  invalid_device_state = ND_INVALID_DEVICE_STATE,
-  invalid_buffer_size = ND_INVALID_BUFFER_SIZE,
-  too_many_addresses = ND_TOO_MANY_ADDRESSES,
-  address_already_exists = ND_ADDRESS_ALREADY_EXISTS,
-  connection_refused = ND_CONNECTION_REFUSED,
-  connection_invalid = ND_CONNECTION_INVALID,
-  connection_active = ND_CONNECTION_ACTIVE,
-  network_unreachable = ND_NETWORK_UNREACHABLE,
-  host_unreachable = ND_HOST_UNREACHABLE,
-  connection_aborted = ND_CONNECTION_ABORTED,
-  device_removed = ND_DEVICE_REMOVED,
-
-  ndext_no_available_address = -1,
-  ndext_already_stopt = -2,
-  ndext_invalid_listener = -3,
-  ndext_invalid_connector = -4,
-  ndext_invalid_qp = -5,
-  ndext_invalid_cq = -6,
-  ndext_invalid_mr = -7,
-};
 
 inline std::error_code make_nd_error_code(int e) {
   return std::error_code{ e, get_nd_error_category() };
