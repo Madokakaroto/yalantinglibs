@@ -60,26 +60,7 @@ struct nd2_sockaddr_t {
     struct sockaddr_storage src_storage_;
   };
   size_t address_size_;
-  size_t provider_index_;
 };
-
-// factory
-struct nd_provider_factory_t {
-  WSAPROTOCOL_INFOW proto_;
-  std::wstring module_name_;
-  unique_module_t module_;
-  dll_can_unload_now unload_;
-  class_factory_ptr factory_;
-};
-using nd_provider_factory_ptr = std::shared_ptr<nd_provider_factory_t>;
-
-// provider
-struct nd_provider_t {
-  nd_provider_factory_ptr factory_;
-  nd2_provider_ptr provider_;
-  size_t index_;
-};
-using nd_provider_ptr = std::shared_ptr<nd_provider_t>;
 
 struct nd2_cq_init_attr {
   HANDLE overlapped_handle_;
@@ -104,7 +85,6 @@ struct nd2_qp_init_attr {
 };
 
 // native type definition for the { windows, network-direct } platform
-
 using native_context_t = IND2Adapter;
 struct native_pd_t {
   native_context_t* context_;
@@ -118,33 +98,63 @@ using native_wc_t = ND2_RESULT;
 using native_qp_init_attr = nd2_qp_init_attr;
 using native_cq_init_attr = nd2_cq_init_attr;
 using native_cq_notify_attr = nd2_cq_notify_attr;
-
 using native_context_config_t = ND2_ADAPTER_INFO;
-struct native_device_t {
-  nd_provider_ptr provider_;
+
+// factory type
+struct nd_provider_factory_t {
+  WSAPROTOCOL_INFOW proto_;
+  std::wstring module_name_;
+  unique_module_t module_;
+  dll_can_unload_now unload_;
+  class_factory_ptr factory_;
+};
+using nd_provider_factory_ptr = std::shared_ptr<nd_provider_factory_t>;
+// adapter type
+struct nd_adapter_t {
   nd2_adapter_ptr adapter_;
   std::unique_ptr<native_pd_t> pd_;
   std::string name_;
   native_context_config_t info_;
 };
-using native_device_ptr = std::shared_ptr<native_device_t>;
+using nd_adapter_ptr = std::shared_ptr<nd_adapter_t>;
+// provider types
+struct nd_provider_t {
+  nd_provider_factory_ptr factory_;
+  nd2_provider_ptr provider_;
+  std::vector<nd_adapter_ptr> v4_adapters_;
+  std::vector<nd_adapter_ptr> v6_adapters_;
+};
+using nd_provider_ptr = std::shared_ptr<nd_provider_t>;
 
 // shared state for a rdma connection
 struct nd_connector_state_t {
   // overlapped handle to receive IO completion
   unique_handle_t overlapped_handle_;
-  // the network-direect connector interface
+  // the network-direct connector interface
   nd2_connector_ptr connector_;
   // the completion queue interface to poll IO work completion
   nd2_completion_queue_ptr cq_;
   // the queue pair interface to perform verbs IO operations
   nd2_queue_pair_ptr qp_;
   // configuration to create this shared state
-  nd_connector_config_t config_;
+  nd_config_t config_;
   // device that creates this state
-  native_device_ptr device_;
+  nd_adapter_ptr adapter_;
 };
 using nd_connector_state_ptr = std::shared_ptr<nd_connector_state_t>;
+
+// shared state for listener
+struct nd_listener_state_t {
+  // overlapped handle to receive IO completion
+  unique_handle_t overlapped_handle_;
+  // the network-direct listener interface 
+  nd2_listener_ptr listener_;
+  // configuration to create this shared state
+  nd_config_t config_;
+  // device that creates this state
+  nd_adapter_ptr adapter_;
+};
+using nd_listener_state_ptr = std::shared_ptr<nd_listener_state_t>;
 
 }
 

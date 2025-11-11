@@ -190,6 +190,7 @@ inline native_mr_t* reg_mr(native_pd_t* pd, void* addr, size_t length,
       break;
     case ND_PENDING:
       hr = result->GetOverlappedResult(&sync_ov, TRUE);
+      [[fallthrough]];
     default:
       ec = static_cast<nd_errc>(hr);
       break;
@@ -210,6 +211,7 @@ inline result_type dereg_mr(native_mr_t* mr, asio::error_code& ec) {
       break;
     case ND_PENDING:
       hr = mr->GetOverlappedResult(&sync_ov, TRUE);
+      [[fallthrough]];
     default:
       ec = static_cast<nd_errc>(hr);
       break;

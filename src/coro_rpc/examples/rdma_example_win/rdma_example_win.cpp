@@ -44,7 +44,7 @@ void check_async_interface()
   // create rdma connection
   using connection_t = coro_io::nd_connection<asio::ip::tcp>;
   connection_t connection{device};
-  connection.open(asio::ip::tcp::v4());
+  connection.open();
 
   // set io executor
   asio::io_context ioc{};
@@ -90,7 +90,7 @@ static async_simple::coro::Lazy<int> check_coro_interface() {
   // create rdma connection
   using connection_t = coro_io::nd_connection<asio::ip::tcp>;
   connection_t connection{device};
-  connection.open(asio::ip::tcp::v4());
+  connection.open();
 
   // set io executor
   asio::io_context ioc{};
@@ -131,5 +131,9 @@ static async_simple::coro::Lazy<int> check_coro_interface() {
 }
 
 int main() {
+
+  auto const& device_manager = coro_io::nd_device_manager_t::instance();
+  auto device = device_manager.get_device(0);
+
   return 0;
 }

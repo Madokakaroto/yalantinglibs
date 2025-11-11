@@ -36,6 +36,10 @@
 #ifndef NDEXT_NO_EXECUTOR
 #define NDEXT_NO_EXECUTOR -10
 #endif
+#ifndef NDEXT_NO_AVAILABLE_PROVIDER
+#define NDEXT_NO_AVAILABLE_PROVIDER -11
+#endif
+
 
 
 namespace coro_io {
@@ -96,6 +100,7 @@ enum class nd_errc : int {
   ext_invalid_device = NDEXT_INVALID_DEVICE,
   ext_already_registered = NDEXT_ALREADY_REGISTERED,
   ext_no_executor = NDEXT_NO_EXECUTOR,
+  ext_no_available_provider = NDEXT_NO_AVAILABLE_PROVIDER,
 };
 
 class nd_error_category : public std::error_category {
@@ -214,6 +219,8 @@ public:
         return "ND_EXT already registered";
       case NDEXT_NO_EXECUTOR:
         return "ND_EXT no executor";
+      case NDEXT_NO_AVAILABLE_PROVIDER:
+        return "ND_EXT no available provider";
       default:
         return "UNKNOWN_ND_ERROR";
     }

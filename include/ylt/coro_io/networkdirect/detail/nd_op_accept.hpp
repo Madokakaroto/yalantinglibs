@@ -36,6 +36,10 @@ public:
     assert(connector_state);
   }
 
+  nd_connector_state_ptr& get_connector_state() {
+    return connector_state_;
+  }
+
 protected:
   static status_t do_process(void* owner, nd_op_base* base, asio::error_code& ec) {
    nd_accept_op_base* o = static_cast<nd_accept_op_base*>(base);
@@ -46,7 +50,7 @@ protected:
        o->stage_ = stage_t::done;
        return status_t::completed;
      default:
-       ec = nd_errc::ndext_already_stopt;
+       ec = nd_errc::ext_already_stopt;
        o->stage_ = stage_t::error;
        return status_t::completed;
    }

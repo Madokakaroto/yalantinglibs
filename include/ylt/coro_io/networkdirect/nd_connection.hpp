@@ -45,6 +45,9 @@ public:
 
   explicit nd_connection(nd_device_ptr const& device)
      : device_(device) {
+    if (!device) {
+      asio::detail::throw_error(nd_errc::ext_invalid_device);
+    }
   }
 
   template <typename PortSpace1, typename Executor1>
@@ -71,25 +74,21 @@ public:
     return state_ != nullptr;
   }
 
-  void open(port_space_type port_space, config_t config = config_t{}) {
+  void open(config_t config = config_t{}) {
     asio::error_code ec{};
-    open(port_space, ec, config);
+    open(config, ec);
     asio::detail::throw_error(ec, "open");
   }
 
-  void open(port_space_type port_space, asio::error_code& ec,
-            config_t config = config_t{}) {
+  void open(config_t config, asio::error_code& ec) {
     if (is_open()) {
       ec = asio::error::already_open;
       ASIO_ERROR_LOCATION(ec);
       return;
     }
-    if (!device_) {
-      ec = nd_errc::ext_invalid_device;
-      ASIO_ERROR_LOCATION(ec);
-      return;
-    }
-    auto state = detail::create_connector_state(device_, config, ec);
+    assert(device_);
+    auto state =
+        detail::create_connector_state(device_->get_adapter(), config, ec);
     if (ec) {
       return;
     }

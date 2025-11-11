@@ -13,7 +13,6 @@ namespace coro_io::detail {
 class nd_service_base {
 public:
  struct base_implementation_type {
-  nd_device_ptr device_;
   base_implementation_type* next_;
   base_implementation_type* prev_;
 };
@@ -27,11 +26,6 @@ protected:
   static inline asio::detail::win_iocp_io_context& use_asio_scheduler(
       asio::execution_context& context) {
     return asio::use_service<asio::detail::win_iocp_io_context>(context);
-  }
-
-  static inline void init_device(base_implementation_type& impl, nd_device_ptr device) {
-    assert(!impl.device_);
-    impl.device_ = std::move(device);
   }
 
   explicit nd_service_base(asio::execution_context& context)
@@ -52,7 +46,6 @@ protected:
   }
 
   void base_destroy(base_implementation_type& impl) {
-    impl.device_.reset();
     asio::detail::mutex::scoped_lock lock(mutex_);
     do_remove(impl);
   }
@@ -73,7 +66,6 @@ protected:
   }
 
   void remove(base_implementation_type& impl) {
-    assert(!impl.device_);
     asio::detail::mutex::scoped_lock lock(mutex_);
     do_remove(impl);
   }

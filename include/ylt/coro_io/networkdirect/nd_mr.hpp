@@ -90,9 +90,13 @@ class nd_mr_t {
                                                     std::size_t length,
                                                     mr_acccess_flag_t flag,
                                                     int extra_flag) {
+    
+    if (!device) {
+      asio::detail::throw_error(nd_errc::ext_invalid_device);
+    }
     asio::error_code ec{};
     detail::nd2_memory_region_ptr result{detail::verbs_ops::reg_mr(
-        device->pd_.get(), addr, length, flag, extra_flag, ec)};
+        device->get_pd(), addr, length, flag, extra_flag, ec)};
     asio::detail::throw_error(ec);
     return result;
   }

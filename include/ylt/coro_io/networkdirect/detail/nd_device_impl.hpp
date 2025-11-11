@@ -29,14 +29,19 @@ inline auto open_adapter(nd2_provider_ptr const& provider,
 inline ND2_ADAPTER_INFO query_adapter_info(nd2_adapter_ptr const& adaptor,
                                            asio::error_code& ec);
 inline std::string query_adapter_name(ND2_ADAPTER_INFO const& info,
-                                      sockaddr* addrin, std::size_t addr_size,
+                                      sockaddr const* addrin, std::size_t addr_size,
                                       asio::error_code& ec);
+inline nd_adapter_ptr create_adapter(nd_provider_ptr const& provider,
+                                     nd2_sockaddr_t const& addr,
+                                     asio::error_code& ec);
+inline nd_adapter_ptr create_adapter(nd_provider_ptr const& provider,
+                                     nd2_sockaddr_t const& addr);
+inline std::vector<nd_provider_ptr> get_providers(asio::error_code& ec);
 inline std::vector<nd_provider_ptr> get_providers();
-inline std::vector<nd_device_ptr> create_devices(
-    std::vector<nd_provider_ptr> const& providers);
-inline bool is_valid_device(nd_device_ptr const& device,
-                            ND2_ADAPTER_INFO const& config);
-inline bool is_valid_device(nd_device_ptr const& device);
+inline void open_adapters(std::vector<nd_provider_ptr>& providers);
+inline bool is_valid_adapter(nd_adapter_ptr const& adapter,
+                             ND2_ADAPTER_INFO const& config);
+inline bool is_valid_adapter(nd_adapter_ptr const& adapter);
 inline HANDLE create_overlapped_file(native_context_t* context,
                                      asio::error_code& ec);
 }
@@ -244,17 +249,12 @@ void enumerate_addr_list(nd_provider_t const& provider,
 
   auto addr_range = std::ranges::subrange{
     temp_addr_list->Address,
-    temp_addr_list->Address + temp_addr_list->iAddressCount} 
-    | std::views::filter([](auto const& sock_addr) {
-      // TODO... config
-      return sock_addr.lpSockaddr->sa_family == AF_INET; 
-    })
+    temp_addr_list->Address + temp_addr_list->iAddressCount}
     | std::views::transform([&](auto const& sock_addr) {
       nd2_sockaddr_t result{};
       std::memcpy(&result.src_addr_, sock_addr.lpSockaddr,
                   sock_addr.iSockaddrLength);
       result.address_size_ = sock_addr.iSockaddrLength;
-      result.provider_index_ = provider.index_;
       return result;
     });
   std::vector<nd2_sockaddr_t> result{addr_range.begin(), addr_range.end()};
@@ -306,19 +306,21 @@ ND2_ADAPTER_INFO query_adapter_info(nd2_adapter_ptr const& adaptor,
   return result;
 }
 
-std::string query_adapter_name(ND2_ADAPTER_INFO const& info, sockaddr* addrin,
+std::string query_adapter_name(ND2_ADAPTER_INFO const& info, sockaddr const* addrin,
                                std::size_t addr_size, asio::error_code& ec) {
   std::string result{};
   DWORD addrlen = 0;
 #if defined(_MSC_VER) && (_MSC_VER >= 1800)
-  int res = WSAAddressToStringW(addrin, static_cast<DWORD>(addr_size), NULL,
-                                NULL, &addrlen);
+  int res =
+      WSAAddressToStringW(const_cast<LPSOCKADDR>(addrin),
+                          static_cast<DWORD>(addr_size), NULL, NULL, &addrlen);
   if (res != 0) {
     ec = make_system_error_code(::WSAGetLastError());
   }
   if (res == SOCKET_ERROR && ec.value() == WSAEFAULT && addrlen != 0) {
     LPWSTR string_buffer = (LPWSTR)_alloca(addrlen * sizeof(WCHAR));
-    res = WSAAddressToStringW(addrin, static_cast<DWORD>(addr_size), NULL,
+    res = WSAAddressToStringW(const_cast<LPSOCKADDR>(addrin),
+                              static_cast<DWORD>(addr_size), NULL,
                               string_buffer, &addrlen);
     if (res != 0) {
       ec = make_system_error_code(::WSAGetLastError());
@@ -342,15 +344,17 @@ std::string query_adapter_name(ND2_ADAPTER_INFO const& info, sockaddr* addrin,
     }
   }
 #else
-  int res = WSAAddressToStringA(addrin, static_cast<DWORD>(addr_size), NULL,
-                                NULL, &addrlen);
+  int res =
+      WSAAddressToStringA(const_cast<LPSOCKADDR>(addrin),
+                          static_cast<DWORD>(addr_size), NULL, NULL, &addrlen);
   if (res != 0) {
     ec = make_system_error_code(::WSAGetLastError());
   }
 
   if (res == SOCKET_ERROR && ec.value() == WSAEFAULT && addrlen != 0) {
     result.resize(addrlen);
-    res = WSAAddressToStringA(addrin, static_cast<DWORD>(addr_size), NULL,
+    res = WSAAddressToStringA(const_cast<LPSOCKADDR>(addrin),
+                              static_cast<DWORD>(addr_size), NULL,
                               result.data(), &addrlen);
     if (res != 0) {
       ec = make_system_error_code(::WSAGetLastError());
@@ -363,12 +367,56 @@ std::string query_adapter_name(ND2_ADAPTER_INFO const& info, sockaddr* addrin,
   return result;
 }
 
-std::vector<nd_provider_ptr> get_providers() {
-  auto const protos = enumerate_protos();
+nd_adapter_ptr create_adapter(nd_provider_ptr const& provider,
+                              nd2_sockaddr_t const& addr,
+                              asio::error_code& ec) {
+  auto result = std::make_shared<nd_adapter_t>();
+  auto adapter_ptr =
+      open_adapter(provider->provider_, &addr.src_addr_, addr.address_size_, ec);
+  if (ec) {
+    return result;
+  }
+  auto const adapter_info = query_adapter_info(adapter_ptr, ec);
+  if (ec) {
+    return result;
+  }
+  auto const adapter_name = query_adapter_name(
+      adapter_info, &addr.src_addr_, addr.address_size_, ec);
+  if (ec) {
+    return result;
+  }
+  auto pd = std::make_unique<native_pd_t>();
+  pd->context_ = adapter_ptr.Get();
+  pd->sync_handle_.reset(create_overlapped_file(adapter_ptr.Get(), ec));
+  if (ec) {
+    return result;
+  }
+  result->adapter_ = adapter_ptr;
+  result->pd_ = std::move(pd);
+  result->name_ = adapter_name;
+  result->info_ = adapter_info;
+  return result;
+}
+
+nd_adapter_ptr create_adapter(nd_provider_ptr const& provider,
+                              nd2_sockaddr_t const& addr) {
+  asio::error_code ec{};
+  auto result = create_adapter(provider, addr, ec);
+  asio::detail::throw_error(ec);
+  return result;
+}
+
+std::vector<nd_provider_ptr> get_providers(asio::error_code& ec) {
+  std::vector<nd_provider_ptr> result{};
+  std::vector<WSAPROTOCOL_INFOW> protos{};
+  enumerate_protos(protos, ec);
+  if (ec) {
+    return result;
+  }
   auto providers = 
     protos |
-    std::views::transform([](auto const& proto) mutable {
-      std::error_code ec{};
+    std::views::transform([](auto const& proto) {
+      asio::error_code ec{};
       auto result = std::make_shared<nd_provider_t>();
       auto const provider_path = get_provider_path(proto, ec);
       if (ec) {
@@ -385,74 +433,57 @@ std::vector<nd_provider_ptr> get_providers() {
       }
       result->factory_ = provider_factory;
       result->provider_ = provider;
-      result->index_ = 0;
       return result;
     }) |
     std::views::filter([](auto const& provider) {
       return provider->provider_ != nullptr;
     });
 
-  return {std::ranges::begin(providers), std::ranges::end(providers)};
+  result = {
+    std::ranges::begin(providers),
+    std::ranges::end(providers)
+  };
+  if (result.empty()) {
+    ec = nd_errc::ext_no_available_provider;
+  }
+  return result;
 }
 
-std::vector<nd_device_ptr> create_devices(
-    std::vector<nd_provider_ptr> const& providers) {
-  auto devices = providers 
-    | std::views::transform([](auto const& provider) {
-        return enumerate_addr_list(*provider);
-      }) 
-    | std::views::join 
-    | std::views::transform([&](auto& addr) {
-        std::error_code ec{};
-        auto result = std::make_shared<nd_device_t>();
-        auto adapter_ptr =
-            open_adapter(providers[addr.provider_index_]->provider_,
-                         &addr.src_addr_, addr.address_size_, ec);
-        if (ec) {
-          return result;
-        }
-
-        auto const adapter_info = query_adapter_info(adapter_ptr, ec);
-        if (ec) {
-          return result;
-        }
-
-        auto const adapter_name = query_adapter_name(
-            adapter_info, &addr.src_addr_, addr.address_size_, ec);
-        if (ec) {
-          return result;
-        }
-
-        auto pd = std::make_unique<native_pd_t>();
-        pd->context_ = adapter_ptr.Get();
-        pd->sync_handle_.reset(create_overlapped_file(adapter_ptr.Get(), ec));
-        if (ec) {
-          return result;
-        }
-
-        result->provider_ = providers[addr.provider_index_];
-        result->adapter_ = adapter_ptr;
-        result->pd_ = std::move(pd);
-        result->name_ = adapter_name;
-        result->info_ = adapter_info;
-
-        return result;
-      }) 
-    | std::views::filter([](auto const& device) {
-        return device && device->adapter_ != nullptr;
-      }) 
-    | std::views::common;
-
-  return {std::ranges::begin(devices), std::ranges::end(devices)};
+std::vector<nd_provider_ptr> get_providers() {
+  asio::error_code ec{};
+  auto const result = get_providers(ec);
+  asio::detail::throw_error(ec);
+  return result;
 }
 
-bool is_valid_device(nd_device_ptr const& device,
-                     ND2_ADAPTER_INFO const& config) {
-  if (!device) {
+void open_adapters(std::vector<nd_provider_ptr>& providers) {
+  std::ranges::for_each(providers, [](auto& provider) {
+    auto const addr_list = enumerate_addr_list(*provider);
+    auto v4_adapters = addr_list
+      | std::views::filter([](auto const& sock_addr) {
+          return sock_addr.src_addr_.sa_family == AF_INET; })
+      | std::views::transform([&](auto const& addr) {
+          return create_adapter(provider, addr);
+        });
+    auto v6_adapters = addr_list
+      | std::views::filter([](auto const& sock_addr) {
+          return sock_addr.src_addr_.sa_family == AF_INET6; })
+      | std::views::transform([&](auto const& addr) {
+          return create_adapter(provider, addr);
+        });
+    provider->v4_adapters_ = {std::ranges::begin(v4_adapters),
+                              std::ranges::end(v4_adapters)};
+    provider->v6_adapters_ = {std::ranges::begin(v6_adapters),
+                              std::ranges::end(v6_adapters)};
+  });
+}
+
+bool is_valid_adapter(nd_adapter_ptr const& adapter,
+                      ND2_ADAPTER_INFO const& config) {
+  if (!adapter) {
     return false;
   }
-
-  auto const& capabilities = device->info_;
+  auto const& capabilities = adapter->info_;
   if (config.MaxRegistrationSize != 0 &&
       config.MaxRegistrationSize > capabilities.MaxRegistrationSize) {
     return false;
@@ -530,8 +561,8 @@ bool is_valid_device(nd_device_ptr const& device,
   return true;
 }
 
-bool is_valid_device(nd_device_ptr const& device) {
-  return device != nullptr && device->adapter_ != nullptr;
+bool is_valid_adapter(nd_adapter_ptr const& adapter) {
+  return adapter != nullptr && adapter->adapter_ != nullptr;
 }
 
 }

@@ -46,14 +46,14 @@ inline result_type accept(IND2Connector* connector, IND2QueuePair* qp,
 
 inline result_type connect(IND2Connector* connector, IND2QueuePair* qp,
                            sockaddr const* addrin, size_t address_size,
-                           ULONG inboundReadLimit, ULONG outboundReadLimit,
+                           ULONG inbound_read_limit, ULONG outbound_read_limit,
                            const void* private_data, ULONG data_size,
                            OVERLAPPED* overlapped, asio::error_code& ec) {
   assert(connector);
   assert(qp);
   auto const hr = connector->Connect(
-      qp, addrin, static_cast<size_type>(address_size), inboundReadLimit,
-      outboundReadLimit, private_data, data_size, overlapped);
+      qp, addrin, static_cast<size_type>(address_size), inbound_read_limit,
+      outbound_read_limit, private_data, data_size, overlapped);
 
   ec = static_cast<nd_errc>(hr);
   return hr;
@@ -111,13 +111,13 @@ inline result_type bind_addr(IND2Listener* listener, sockaddr const* addrin,
 }
 
 inline nd_connector_state_ptr create_connector_state(
-    nd_device_ptr const& device, nd_connector_config_t const& config,
+    nd_adapter_ptr const& adapter, nd_config_t const& config,
     asio::error_code& ec) {
-  assert(is_valid_device(device));
+  assert(is_valid_adapter(adapter));
 
   // create overlapped handle for notification of IO completion
   unique_handle_t overlapped_handle{};
-  overlapped_handle.reset(create_overlapped_file(device->adapter_.Get(), ec));
+  overlapped_handle.reset(create_overlapped_file(adapter->adapter_.Get(), ec));
   if (ec) {
     ASIO_ERROR_LOCATION(ec);
     return nullptr;
@@ -126,7 +126,7 @@ inline nd_connector_state_ptr create_connector_state(
   // create network-direct connector interface
   nd2_connector_ptr connector{};
   connector.Attach(
-      create_connector(device->adapter_.Get(), overlapped_handle.get(), ec));
+      create_connector(adapter->adapter_.Get(), overlapped_handle.get(), ec));
   if (ec) {
     ASIO_ERROR_LOCATION(ec);
     return nullptr;
@@ -139,7 +139,7 @@ inline nd_connector_state_ptr create_connector_state(
       .processor_group_ = 0,
       .processor_affinity_ = 0,
   };
-  cq.Attach(verbs_ops::create_cq(device->adapter_.Get(), config.cqe_,
+  cq.Attach(verbs_ops::create_cq(adapter->adapter_.Get(), config.cqe_,
                                  cq_init_attr, ec));
   if (ec) {
     ASIO_ERROR_LOCATION(ec);
@@ -158,7 +158,7 @@ inline nd_connector_state_ptr create_connector_state(
       .max_recv_sge_ = config.max_recv_sge_,
       .max_inline_data_ = config.max_inline_data_,
   };
-  qp.Attach(verbs_ops::create_qp(device->pd_.get(), qp_init_attr, ec));
+  qp.Attach(verbs_ops::create_qp(adapter->pd_.get(), qp_init_attr, ec));
   if (ec) {
     ASIO_ERROR_LOCATION(ec);
     return nullptr;
@@ -171,20 +171,60 @@ inline nd_connector_state_ptr create_connector_state(
   shared_state->cq_ = std::move(cq);
   shared_state->qp_ = std::move(qp);
   shared_state->config_ = config;
+  shared_state->adapter_ = adapter;
   return shared_state;
 }
 
 inline nd_connector_state_ptr create_connector_state(
-  nd_device_ptr const& device, nd_connector_config_t const& config) {
+  nd_adapter_ptr const& adapter, nd_config_t const& config) {
   asio::error_code ec{};
-  auto result = create_connector_state(device, config, ec);
+  auto result = create_connector_state(adapter, config, ec);
   asio::detail::throw_error(ec);
   return result;
 }
 
-inline bool is_config_valid(nd_device_ptr const& device,
-                            nd_connector_config_t const& config) {
-  assert(is_valid_device(device));
+inline nd_listener_state_ptr create_listener_state(
+    nd_adapter_ptr const& adapter, nd_config_t const& config,
+    asio::error_code& ec) {
+  assert(is_valid_adapter(adapter));
+
+  // create overlapped handle for notification of IO completion
+  unique_handle_t overlapped_handle{};
+  overlapped_handle.reset(create_overlapped_file(adapter->adapter_.Get(), ec));
+  if (ec) {
+    ASIO_ERROR_LOCATION(ec);
+    return nullptr;
+  }
+
+  // create network-direct listener interface
+  nd2_listener_ptr listener{};
+  listener.Attach(
+      create_listener(adapter->adapter_.Get(), overlapped_handle.get(), ec));
+  if (ec) {
+    ASIO_ERROR_LOCATION(ec);
+    return nullptr;
+  }
+
+  ec.clear();
+  auto result = std::make_shared<nd_listener_state_t>();
+  result->overlapped_handle_ = std::move(overlapped_handle);
+  result->listener_ = std::move(listener);
+  result->config_ = config;
+  result->adapter_ = adapter;
+  return result;
+}
+
+inline nd_listener_state_ptr create_listener_state(
+    nd_adapter_ptr const& adapter, nd_config_t const& config) {
+  asio::error_code ec{};
+  auto const result = create_listener_state(adapter, config, ec);
+  asio::detail::throw_error(ec);
+  return result;
+}
+
+inline bool is_config_valid(nd_adapter_ptr const& adapter,
+                            nd_config_t const& config) {
+  assert(is_valid_adapter(adapter));
   // TODO ...
   return true;
 }

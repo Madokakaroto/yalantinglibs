@@ -37,13 +37,13 @@ public:
   using endpoint_type = typename port_space_type::endpoint;
 
   // configuration type to initialize the shared state
-  using config_t = nd_connector_config_t;
+  using config_t = nd_config_t;
 
   // shared state of a rdma connection:
   using shared_state_t = nd_connector_state_t;
   using shared_state_ptr = nd_connector_state_ptr;
 
-  // implementation_type used by asio::detail::io_object_imipl
+  // implementation_type used by asio::detail::io_object_impl
   struct implementation_type : nd_service_base::base_implementation_type {
     shared_state_ptr state_;
   };
@@ -56,7 +56,6 @@ public:
     : base_type(context)
     , nd_service_base(context)
     , success_ec_() {
-
   }
 
   ~nd_iocp_connector_service() = default;
@@ -93,6 +92,7 @@ public: // rule of five, used by asio::detail::io_object_impl
                    nd_iocp_connector_service& other_service,
                    implementation_type& other_impl) {
     close_for_destruction(impl);
+    nd_service_base::base_move_assign(impl, other_service, other_impl);
     if (this != &other_service) {
       this->remove(impl);
     }
@@ -134,7 +134,7 @@ public: // public interfaces
   }
   
   asio::error_code bind_addr(implementation_type& impl,
-                             sockaddr const* addrin, std::size_t addr_size,
+                             endpoint_type const& endpoint,
                              asio::error_code& ec) {
     if (impl.state_ == nullptr || impl.state_->connector_) {
       ec = nd_errc::ext_invalid_connector;
@@ -142,7 +142,8 @@ public: // public interfaces
       return ec;
     }
 
-    detail::bind_addr(impl.state_->connector_.Get(), addrin, addr_size, ec);
+    detail::bind_addr(impl.state_->connector_.Get(), endpoint.data(),
+                      endpoint.size(), ec);
     if (ec) {
       ASIO_ERROR_LOCATION(ec);
     }
@@ -287,6 +288,7 @@ private:
      impl.state_->cq_.Reset();
      impl.state_->connector_.Reset();
      impl.state_->overlapped_handle_.reset();
+     //impl.state_->device_.reset();
    }
   }
 
@@ -302,11 +304,10 @@ private:
     // parse device local endpoint
     using address_type = decltype(endpoint.address());
     endpoint_type endpoint_to_bind{
-        address_type::from_string(state->device_->name_), endpoint.port()};
+        address_type::from_string(state->adapter_->name_), endpoint.port()};
     // bind device local endpoint with the connector
     asio::error_code ec{};
-    bind_addr(impl, endpoint_to_bind.data(), endpoint_to_bind.size(),
-              ec);
+    bind_addr(impl, endpoint_to_bind, ec);
     if (ec) {
       this->scheduler_.on_completion(op, ec);
       return;
