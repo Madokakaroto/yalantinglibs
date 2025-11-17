@@ -19,6 +19,7 @@
 #include "ylt/coro_io/networkdirect/nd_connection.hpp"
 #include "ylt/coro_io/networkdirect/nd_listener.hpp"
 #include "ylt/coro_io/networkdirect/nd_socket.hpp"
+#include "ylt/coro_io/networkdirect/nd_portspace.hpp"
 
 namespace coro_io {
 

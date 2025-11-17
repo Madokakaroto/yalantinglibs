@@ -96,7 +96,7 @@ class nd_mr_t {
     }
     asio::error_code ec{};
     detail::nd2_memory_region_ptr result{detail::verbs_ops::reg_mr(
-        device->get_pd(), addr, length, flag, extra_flag, ec)};
+        device->pd_.get(), addr, length, flag, extra_flag, ec)};
     asio::detail::throw_error(ec);
     return result;
   }

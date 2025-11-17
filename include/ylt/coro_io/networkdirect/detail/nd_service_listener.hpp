@@ -12,12 +12,12 @@ namespace coro_io::detail {
 template <typename PortSpace>
 class nd_iocp_listener_service
     : public asio::detail::execution_context_service_base<
-          nd_iocp_listener_service<PortSpace>>,
-      public nd_service_base {
+          nd_iocp_listener_service<PortSpace>>
+    , public nd_service_base {
 public:
   /// export public types
   using base_type = asio::detail::execution_context_service_base<
-     nd_iocp_connector_service<PortSpace>>;
+     nd_iocp_listener_service<PortSpace>>;
 
   // the port space type
   using port_space_type = PortSpace;
@@ -151,12 +151,31 @@ public: // public interfaces
     return ec;
   }
 
+  template <typename Connection, typename Handler, typename IoExecutor>
+  void async_accept(implementation_type& impl, Connection& peer,
+                    nd_config_t const& config, Handler& handler,
+                    IoExecutor const& io_ex) {
+    // TODO ... cancellation
+    using op = nd_accept_op<Connection, Handler, IoExecutor>;
+    typename op::ptr p = {asio::detail::addressof(handler),
+                          op::ptr::allocate(handler), 0};
+    p.p = new (p.v) op{impl.state_->listener_.Get(), peer, handler, io_ex};
+
+    // TODO ...
+    // ASIO_HANDLER_CREATION((reactor_.context(), *p.p, "socket",
+    //  &impl, impl.socket_, "async_accept"));
+
+    start_accept_op(impl, peer.is_open(), config, p.p->get_device(),
+                    p.p->get_state(), p.p);
+    p.v = p.p = 0;
+  }
+
 private:
   void close_for_destruction(implementation_type& impl) {
-    if (is_open(impl)) {
+    if (has_state(impl)) {
       impl.state_->listener_.Reset();
-      impl.state_->handle_.reset();
-      impl.state_->device_.reset();
+      impl.state_->overlapped_handle_.reset();
+      impl.state_->adapter_.reset();
     }
   }
 
@@ -164,15 +183,36 @@ private:
     return has_state(impl) && impl.state_->listener_ != nullptr;
   }
 
-  void start_accept_op(implementation_type& impl,
+  void start_accept_op(implementation_type& impl, bool peer_is_open,
+                       nd_config_t const& config, nd_device_ptr& device,
                        nd_connector_state_ptr& connector_state,
                        nd_accept_op_base* op) {
     this->scheduler_.work_started();
     if (!has_listener(impl)) {
       this->scheduler_.on_completion(op, nd_errc::ext_invalid_listener);
     }
+    else if (peer_is_open) {
+      this->scheduler_.on_completion(op, asio::error::already_open);
+    }
     else {
+      asio::error_code ec{};
+      connector_state =
+          create_connector_state(impl.state_->adapter_, config, ec);
+      if (ec) {
+        ASIO_ERROR_LOCATION(ec);
+        this->scheduler_.on_completion(op, ec);
+        return;
+      }
 
+      device = impl.state_->adapter_;
+      get_connection_request(impl.state_->listener_.Get(),
+                             connector_state->connector_.Get(),
+                             op, ec);
+      if (ec) {
+        this->scheduler_.on_completion(op, ec);
+        return;
+      }
+      this->scheduler_.on_pending(op);
     }
   }
 };

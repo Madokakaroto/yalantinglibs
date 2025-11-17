@@ -39,20 +39,23 @@ void check_async_interface()
   // get device
   auto const& device_manager =
     coro_io::nd_device_manager_t::instance();
-  auto device = device_manager.get_device(0);
+
+  coro_io::nd_config_t config{};
+  auto device = device_manager.get_first_available_device(
+      coro_io::roce::v2::tcp::v4(), config);
 
   // create rdma connection
-  using connection_t = coro_io::nd_connection<asio::ip::tcp>;
+  using connection_t = coro_io::roce::v2::tcp::connection;
+  using endpoint_t = coro_io::roce::v2::tcp::endpoint;
   connection_t connection{device};
-  connection.open();
+  connection.open(config);
 
   // set io executor
   asio::io_context ioc{};
-  //connection.set_executor(ioc.get_executor());
   connection.set_execution_context(ioc);
 
   // async connect
-  asio::ip::tcp::endpoint endpoint{};
+  endpoint_t endpoint{};
   connection.async_connect(endpoint, [](asio::error_code const& ec) {});
 
   // memory region
@@ -85,12 +88,15 @@ void check_async_interface()
 static async_simple::coro::Lazy<int> check_coro_interface() {
   // get device
   auto const& device_manager = coro_io::nd_device_manager_t::instance();
-  auto device = device_manager.get_device(0);
+
+  coro_io::nd_config_t config{};
+  auto device = device_manager.get_first_available_device(
+      coro_io::roce::v2::tcp::v4(), config);
 
   // create rdma connection
-  using connection_t = coro_io::nd_connection<asio::ip::tcp>;
+  using connection_t = coro_io::roce::v2::tcp::connection;
   connection_t connection{device};
-  connection.open();
+  connection.open(config);
 
   // set io executor
   asio::io_context ioc{};
@@ -102,7 +108,7 @@ static async_simple::coro::Lazy<int> check_coro_interface() {
   std::size_t bytes_transfered = 0;
 
   // async connect
-  asio::ip::tcp::endpoint endpoint{};
+  coro_io::roce::v2::tcp::endpoint endpoint{};
   ec = co_await async_connect(connection, endpoint);
 
   // memory region
@@ -130,10 +136,32 @@ static async_simple::coro::Lazy<int> check_coro_interface() {
   co_return 0;
 }
 
-int main() {
-
+void check_listener_interface() {
+  // get device
   auto const& device_manager = coro_io::nd_device_manager_t::instance();
-  auto device = device_manager.get_device(0);
 
+  coro_io::nd_config_t config{};
+  auto device = device_manager.get_first_available_device(
+      coro_io::roce::v2::tcp::v4(), config);
+
+  // create rdma listener
+  using listener_t = coro_io::roce::v2::tcp::listener;
+  using endpoint_t = coro_io::roce::v2::tcp::endpoint;
+  listener_t listener{device};
+  listener.open(config);
+
+  // set io executor
+  asio::io_context ioc{};
+  // connection.set_executor(ioc.get_executor());
+  listener.set_execution_context(ioc);
+
+  // bind addr
+  endpoint_t endpoint{asio::ip::tcp::v4(), 1666};
+  listener.bind_addr(endpoint);
+  // listen
+  listener.listen(0);
+}
+
+int main() {
   return 0;
 }

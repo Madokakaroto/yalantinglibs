@@ -23,20 +23,22 @@ protected:
 
 protected:
   stage_t stage_;
+  nd_device_ptr device_;
   nd_connector_state_ptr connector_state_;
 
 public:
   nd_accept_op_base(IND2Listener* listener,
-                    nd_connector_state_ptr connector_state,
                     func_type complete_func) 
     : nd_op_base(listener, &nd_accept_op_base::do_process, complete_func) 
-    , stage_(stage_t::request)
-    , connector_state_(std::move(connector_state)){
+    , stage_(stage_t::request){
     assert(listener);
-    assert(connector_state);
   }
 
-  nd_connector_state_ptr& get_connector_state() {
+  nd_device_ptr& get_device() {
+    return device_;
+  }
+
+  nd_connector_state_ptr& get_state() {
     return connector_state_;
   }
 
@@ -71,20 +73,22 @@ protected:
   }
 };
 
-template <typename ConnType, typename Handler, typename IoExecutor>
+template <typename Connection, typename Handler, typename IoExecutor>
 class nd_accept_op final : public nd_accept_op_base {
  private:
+  Connection& peer_;
   Handler handler_;
   asio::detail::handler_work<Handler, IoExecutor> work_;
 
  public:
   ASIO_DEFINE_HANDLER_PTR(nd_accept_op);
-  nd_accept_op(IND2Listener* listener, ConnType const& connection,
+  nd_accept_op(IND2Listener* listener, Connection& peer,
                Handler& handler, const IoExecutor& io_ex)
-      : nd_accept_op_base(listener, connection.get_shared_state(),
-                          &nd_accept_op::do_complete),
-        handler_(ASIO_MOVE_CAST(Handler)(handler)),
-        work_(handler_, io_ex) {}
+      : nd_accept_op_base(listener, &nd_accept_op::do_complete)
+      , peer_(peer)
+      , handler_(ASIO_MOVE_CAST(Handler)(handler))
+      , work_(handler_, io_ex) {
+  }
 
  private:
   static void do_complete(void* owner, asio::detail::operation* base,
@@ -97,6 +101,10 @@ class nd_accept_op final : public nd_accept_op_base {
     auto const complete_status = o->resume_process(owner, ec);
     if (complete_status != status_t::completed) {
       return;
+    }
+
+    if (!ec) {
+      peer_.assign(this->get_device(), this->get_state(), ec);
     }
 
     ptr p = {asio::detail::addressof(o->handler_), o, o};

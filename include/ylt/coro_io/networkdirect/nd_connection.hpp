@@ -37,6 +37,7 @@ protected:
   std::unique_ptr<impl_type> pimpl_;
 
 public:
+  nd_connection() = default;
   ~nd_connection() = default;
   nd_connection(nd_connection const&) = delete;
   nd_connection& operator=(nd_connection const&) = delete;
@@ -81,14 +82,18 @@ public:
   }
 
   void open(config_t config, asio::error_code& ec) {
+    if (!device_) {
+      ec = nd_errc::ext_invalid_device;
+      ASIO_ERROR_LOCATION(ec);
+      return;
+    }
     if (is_open()) {
       ec = asio::error::already_open;
       ASIO_ERROR_LOCATION(ec);
       return;
     }
-    assert(device_);
     auto state =
-        detail::create_connector_state(device_->get_adapter(), config, ec);
+        detail::create_connector_state(device_, config, ec);
     if (ec) {
       return;
     }
@@ -157,6 +162,35 @@ public:
   void cancel() {
     // TODO ...
     assert(false);
+  }
+
+  void assign(nd_device_ptr const& device,
+              detail::nd_connector_state_ptr const& state,
+              asio::error_code& ec) {
+    if (is_open()) {
+      ec = nd_errc::ext_invalid_device;
+      ASIO_ERROR_LOCATION(ec);
+      return;
+    }
+    if (has_executor()) {
+      ec = nd_errc::ext_already_registered;
+      ASIO_ERROR_LOCATION(ec);
+      return;
+    }
+    if (!device) {
+      ec = nd_errc::ext_invalid_device;
+      ASIO_ERROR_LOCATION(ec);
+      return;
+    }
+    device_ = device;
+    state_ = state;
+  }
+
+  void assign(nd_device_ptr const& device,
+              detail::nd_connector_state_ptr const& state) {
+    asio::error_code ec{};
+    assign(device, state, ec);
+    asio::detail::throw_error(ec, "assign");
   }
 
   // begin implement async connect

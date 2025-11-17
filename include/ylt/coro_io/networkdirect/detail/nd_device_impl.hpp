@@ -41,6 +41,8 @@ inline std::vector<nd_provider_ptr> get_providers();
 inline void open_adapters(std::vector<nd_provider_ptr>& providers);
 inline bool is_valid_adapter(nd_adapter_ptr const& adapter,
                              ND2_ADAPTER_INFO const& config);
+inline bool is_valid_adapter(nd_adapter_ptr const& adapter,
+                             nd_config_t const& config);
 inline bool is_valid_adapter(nd_adapter_ptr const& adapter);
 inline HANDLE create_overlapped_file(native_context_t* context,
                                      asio::error_code& ec);
@@ -557,6 +559,39 @@ bool is_valid_adapter(nd_adapter_ptr const& adapter,
       config.AdapterFlags) {
       return false;
     }
+  }
+  return true;
+}
+
+bool is_valid_adapter(nd_adapter_ptr const& adapter,
+                      nd_config_t const& config) {
+  if (!adapter) {
+    return false;
+  }
+  auto const& capabilities = adapter->info_;
+  if (config.cqe_ > capabilities.MaxCompletionQueueDepth) {
+    return false;
+  }
+  if (config.max_send_wr_ > capabilities.MaxInitiatorQueueDepth) {
+    return false;
+  }
+  if (config.max_recv_wr_ > capabilities.MaxReceiveQueueDepth) {
+    return false;
+  }
+  if (config.max_send_sge_ > capabilities.MaxInitiatorSge) {
+    return false;
+  }
+  if (config.max_recv_sge_ > capabilities.MaxReceiveSge) {
+    return false;
+  }
+  if (config.max_inline_data_ > capabilities.MaxInlineDataSize) {
+    return false;
+  }
+  if (config.inbound_read_limit_ > capabilities.MaxInboundReadLimit) {
+    return false;
+  }
+  if (config.outbound_read_limit_ > capabilities.MaxOutboundReadLimit) {
+    return false;
   }
   return true;
 }

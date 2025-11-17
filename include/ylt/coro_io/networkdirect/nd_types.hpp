@@ -50,10 +50,3 @@ struct nd_remote_addr_t {
 
 // types not used directly
 #include "ylt/coro_io/networkdirect/detail/nd_impl_types.hpp"
-
-namespace coro_io {
-
-// nd device
-using nd_context_config_t = detail::native_context_config_t;
-
-}  // namespace coro_io
