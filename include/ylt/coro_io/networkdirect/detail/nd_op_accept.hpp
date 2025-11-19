@@ -104,7 +104,7 @@ class nd_accept_op final : public nd_accept_op_base {
     }
 
     if (!ec) {
-      peer_.assign(this->get_device(), this->get_state(), ec);
+      o->peer_.assign(o->get_device(), o->get_state(), ec);
     }
 
     ptr p = {asio::detail::addressof(o->handler_), o, o};

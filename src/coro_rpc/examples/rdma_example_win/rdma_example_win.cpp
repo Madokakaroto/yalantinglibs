@@ -147,19 +147,33 @@ void check_listener_interface() {
   // create rdma listener
   using listener_t = coro_io::roce::v2::tcp::listener;
   using endpoint_t = coro_io::roce::v2::tcp::endpoint;
-  listener_t listener{device};
-  listener.open(config);
+  using connection_t = coro_io::roce::v2::tcp::connection;
+  listener_t listener{};
+  listener.open(device, config);
 
   // set io executor
   asio::io_context ioc{};
   // connection.set_executor(ioc.get_executor());
   listener.set_execution_context(ioc);
 
-  // bind addr
-  endpoint_t endpoint{asio::ip::tcp::v4(), 1666};
-  listener.bind_addr(endpoint);
+  // bind port number
+  uint16_t const port_number = 1666;
+  listener.bind(1666);
   // listen
-  listener.listen(0);
+  listener.listen();
+
+  // construct with open, bind & listen
+  listener_t listener1 { device, config, port_number };
+  listener1.set_execution_context(ioc);
+
+  // construct new 
+  connection_t new_connection{};
+  listener1.async_accept(new_connection, config,
+    [&](asio::error_code const& ec){
+      if (!ec) {
+        new_connection.set_execution_context(ioc);
+      }
+  });
 }
 
 int main() {

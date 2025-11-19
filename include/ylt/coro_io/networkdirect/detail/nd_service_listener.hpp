@@ -91,7 +91,64 @@ public: // rule of five, used by asio::detail::io_object_impl
     }
   }
 
-public: // public interfaces
+public: // static public interfaces on state
+  static bool is_open(shared_state_ptr const& state) {
+    return state != nullptr && state->listener_ != nullptr;
+  }
+
+  static asio::error_code open(nd_device_ptr const& device,
+                               nd_config_t const& config,
+                               shared_state_ptr& state,
+                               asio::error_code& ec) {
+    if (is_open(state)) {
+      ec = asio::error::already_open;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    if (!device) {
+      ec = nd_errc::ext_invalid_device;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    state = detail::create_listener_state(device, config, ec);
+    return ec;
+  }
+
+  static asio::error_code bind(shared_state_ptr& state,
+                               uint16_t port_number,
+                               asio::error_code& ec) {
+    if (!is_open(state)) {
+      ec = nd_errc::ext_invalid_listener;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    using address_type = decltype(std::declval<endpoint_type>().address());
+    endpoint_type endpoint{address_type::from_string(state->adapter_->name_),
+                           port_number};
+    detail::bind_addr(state->listener_.Get(), endpoint.data(),
+                      endpoint.size(), ec);
+    if (ec) {
+      ASIO_ERROR_LOCATION(ec);
+    }
+    return ec;
+  }
+
+  static asio::error_code listen(shared_state_ptr& state,
+                                 asio::error_code& ec) {
+    if (!is_open(state)) {
+      ec = nd_errc::ext_invalid_listener;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    auto const backlog = state->config_.backlog_;
+    detail::listen(state->listener_.Get(), backlog, ec);
+    if (ec) {
+      ASIO_ERROR_LOCATION(ec);
+    }
+    return ec;
+  }
+
+public: // public interfaces on implementation
   bool has_state(implementation_type const& impl) const {
     return impl.state_ != nullptr;
   }
@@ -119,36 +176,6 @@ public: // public interfaces
 
   void close(implementation_type& impl) {
     close_for_destruction(impl);
-  }
-
-  asio::error_code bind_addr(implementation_type& impl,
-                             endpoint_type const& endpoint,
-                             asio::error_code& ec) {
-    if (!has_listener(impl)) {
-      ec = nd_errc::ext_invalid_listener;
-      ASIO_ERROR_LOCATION(ec);
-      return ec;
-    }
-    detail::bind_addr(impl.state_->listener_.Get(), endpoint.data(),
-                      endpoint.size(), ec);
-    if (ec) {
-      ASIO_ERROR_LOCATION(ec);
-    }
-    return ec;
-  }
-
-  asio::error_code listen(implementation_type& impl, int backlog,
-                          asio::error_code& ec) {
-    if (!has_listener(impl)) {
-      ec = nd_errc::ext_invalid_listener;
-      ASIO_ERROR_LOCATION(ec);
-      return ec;
-    }
-    detail::listen(impl.state_->listener_.Get(), backlog, ec);
-    if (ec) {
-      ASIO_ERROR_LOCATION(ec);
-    }
-    return ec;
   }
 
   template <typename Connection, typename Handler, typename IoExecutor>

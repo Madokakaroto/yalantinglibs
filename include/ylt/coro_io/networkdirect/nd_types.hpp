@@ -39,6 +39,7 @@ struct nd_config_t {
   size_type max_inline_data_ = 16;
   size_type inbound_read_limit_ = 0;
   size_type outbound_read_limit_ = 0;
+  int backlog_ = 4;
 };
 
 struct nd_remote_addr_t {

@@ -37,18 +37,12 @@ class nd_listener {
   std::unique_ptr<impl_type> pimpl_;
 
  public:
+  nd_listener() = default;
   ~nd_listener() = default;
   nd_listener(nd_listener const&) = delete;
   nd_listener& operator=(nd_listener const&) = delete;
   nd_listener(nd_listener&&) = default;
   nd_listener& operator=(nd_listener&&) = default;
-
-  explicit nd_listener(nd_device_ptr const& device)
-    : device_(device) {
-    if (!device) {
-      asio::detail::throw_error(nd_errc::ext_invalid_device);
-    }
-  }
 
   template <typename PortSpace1, typename Executor1>
     requires(asio::is_convertible<PortSpace1, PortSpace>::value &&
@@ -68,35 +62,69 @@ class nd_listener {
     return *this = std::move(temp);
   }
 
- public:
-  bool is_open() const noexcept { 
-    return state_ != nullptr;
-  }
-
-  void open(config_t config = config_t{}) {
+  nd_listener(nd_device_ptr const& device,
+              config_t const& config = config_t{})
+    : device_(device) {
+    // construct with open
     asio::error_code ec{};
-    open(config, ec);
+    service_type::open(device, config, state_, ec);
     asio::detail::throw_error(ec, "open");
   }
 
-  void open(config_t config, asio::error_code& ec) {
-    if (!device_) {
-      ec = nd_errc::ext_invalid_device;
-      ASIO_ERROR_LOCATION(ec);
-      return;
+  nd_listener(nd_device_ptr const& device, config_t const& config,
+              int port_number)
+    : device_(device) {
+    // construct with open, bind & listen
+    asio::error_code ec{};
+    service_type::open(device, config, state_, ec);
+    asio::detail::throw_error(ec, "open");
+
+    service_type::bind(state_, port_number, ec);
+    asio::detail::throw_error(ec, "bind");
+
+    service_type::listen(state_, ec);
+    asio::detail::throw_error(ec, "listen");
+  }
+
+ public:
+  bool is_open() const noexcept { 
+    return service_type::is_open(state_);
+  }
+
+  void open(nd_device_ptr const& device, config_t const& config = config_t{}) {
+    asio::error_code ec{};
+    open(device, config, ec);
+    asio::detail::throw_error(ec, "open");
+  }
+
+  void open(nd_device_ptr const& device, config_t const& config,
+            asio::error_code& ec) {
+    detail::nd_listener_state_ptr state{};
+    service_type::open(device, config, state, ec);
+    if (!ec) {
+      device_ = device;
+      state_ = std::move(state);
     }
-    if (is_open()) {
-      ec = asio::error::already_open;
-      ASIO_ERROR_LOCATION(ec);
-      return;
-    }
-    auto state = detail::create_listener_state(device_, config, ec);
-    if (ec) {
-      return;
-    }
-    assert(state);
-    state_ = std::move(state);
-    ec.clear();
+  }
+
+  void bind(uint16_t port_number) {
+    asio::error_code ec{};
+    bind(port_number, ec);
+    asio::detail::throw_error(ec, "bind");
+  }
+
+  void bind(uint16_t port_number, asio::error_code& ec) {
+    service_type::bind(state_, port_number, ec);
+  }
+
+  void listen() {
+    asio::error_code ec{};
+    listen(ec);
+    asio::detail::throw_error(ec, "listen");
+  }
+
+  void listen(asio::error_code& ec) {
+    service_type::listen(state_, ec);
   }
 
   bool has_executor() const noexcept {
@@ -157,35 +185,56 @@ class nd_listener {
     asio::detail::throw_error(ec, "set_execution_context");
   }
 
-  void bind_addr(endpoint_type const& endpoint) {
-    asio::error_code ec{};
-    bind_addr(endpoint, ec);
-    asio::detail::throw_error(ec, "bind_addr");
-  }
+  // begin implement async write
+ private:
+  class initiate_async_accept {
+   public:
+    using executor_type = Executor;
 
-  void bind_addr(endpoint_type const& endpoint, asio::error_code& ec) {
-    if (!has_executor()) {
-      ec = nd_errc::ext_no_executor;
-      ASIO_ERROR_LOCATION(ec);
-      return;
+    explicit initiate_async_accept(nd_listener* self)
+        : self_(self) {}
+
+    executor_type get_executor() const ASIO_NOEXCEPT {
+      return self_->get_executor();
     }
-    pimpl_->get_service().bind_addr(pimpl_->get_implementation(), endpoint, ec);
-  }
 
-  void listen(int backlog) {
-    asio::error_code ec{};
-    listen(backlog, ec);
-    asio::detail::throw_error(ec, "listen");
-  }
+    template <typename AcceptHandler, typename PortSpace1, typename Executor1>
+    void operator()(ASIO_MOVE_ARG(AcceptHandler) handler,
+                    nd_connection<PortSpace1, Executor1>& peer,
+                    nd_config_t const& config) const {
+      // If you get an error on the following line it means that your handler
+      // does not meet the documented type requirements for a AcceptHandler.
+      ASIO_ACCEPT_HANDLER_CHECK(AcceptHandler, handler) type_check;
 
-  void listen(int backlog, asio::error_code& ec) {
-    if (!has_executor()) {
-      ec = nd_errc::ext_no_executor;
-      ASIO_ERROR_LOCATION(ec);
-      return;
+      asio::detail::non_const_lvalue<AcceptHandler> handler2(handler);
+      self_->pimpl_->get_service().async_accept(
+          self_->pimpl_->get_implementation(),  // io object implementation
+          peer, config,                       // peer connection & confit to initialize peer
+          handler2.value,                     // handler
+          self_->pimpl_->get_executor());  // io executor
     }
-    pimpl_->get_service().listen(pimpl_->get_implementation(), backlog, ec);
+
+   private:
+    nd_listener* self_;
+  };
+
+ public:
+  template <typename Executor1,
+            ASIO_COMPLETION_TOKEN_FOR(void(asio::error_code))
+                AcceptToken ASIO_DEFAULT_COMPLETION_TOKEN_TYPE(executor_type)>
+  ASIO_INITFN_AUTO_RESULT_TYPE_PREFIX(AcceptToken, void(asio::error_code))
+  async_accept(nd_connection<port_space_type, Executor1>& peer,
+               nd_config_t const& config,
+               ASIO_MOVE_ARG(AcceptToken)
+                   token ASIO_DEFAULT_COMPLETION_TOKEN(executor_type))
+      ASIO_INITFN_AUTO_RESULT_TYPE_SUFFIX(
+          (async_initiate<AcceptToken, void(asio::error_code)>(
+              declval<initiate_async_accept>(), token, peer, config))) {
+    return async_initiate<AcceptToken, void(asio::error_code)>(
+        initiate_async_accept(this), token, peer, config);
   }
+   // end implement async write
+
 };
 
 }
