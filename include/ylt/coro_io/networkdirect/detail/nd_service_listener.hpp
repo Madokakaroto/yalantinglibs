@@ -111,6 +111,9 @@ public: // static public interfaces on state
       return ec;
     }
     state = detail::create_listener_state(device, config, ec);
+    if (ec) {
+      ASIO_ERROR_LOCATION(ec);
+    }
     return ec;
   }
 

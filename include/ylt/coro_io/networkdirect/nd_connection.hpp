@@ -44,13 +44,6 @@ public:
   nd_connection(nd_connection&&) = default;
   nd_connection& operator=(nd_connection&&) = default;
 
-  explicit nd_connection(nd_device_ptr const& device)
-     : device_(device) {
-    if (!device) {
-      asio::detail::throw_error(nd_errc::ext_invalid_device);
-    }
-  }
-
   template <typename PortSpace1, typename Executor1>
     requires(asio::is_convertible<PortSpace1, PortSpace>::value &&
              asio::is_convertible<Executor1, Executor>::value)
@@ -70,36 +63,34 @@ public:
     return *this = std::move(temp);
   }
 
-public:
-  bool is_open() const noexcept {
-    return state_ != nullptr;
-  }
-
-  void open(config_t config = config_t{}) {
+  nd_connection(nd_device_ptr const& device,
+                config_t const& config = config_t{})
+      : device_(device) {
+    // construct with open
     asio::error_code ec{};
-    open(config, ec);
+    service_type::open(device, config, state_, ec);
     asio::detail::throw_error(ec, "open");
   }
 
-  void open(config_t config, asio::error_code& ec) {
-    if (!device_) {
-      ec = nd_errc::ext_invalid_device;
-      ASIO_ERROR_LOCATION(ec);
-      return;
+public:
+  bool is_open() const noexcept {
+    return service_type::is_open(state_);
+  }
+
+  void open(nd_device_ptr const& device, config_t config = config_t{}) {
+    asio::error_code ec{};
+    open(device, config, ec);
+    asio::detail::throw_error(ec, "open");
+  }
+
+  void open(nd_device_ptr const& device, config_t config,
+            asio::error_code& ec) {
+    detail::nd_connector_state_ptr state{};
+    service_type::open(device, config, state, ec);
+    if (!ec) {
+      device_ = device;
+      state_ = std::move(state);
     }
-    if (is_open()) {
-      ec = asio::error::already_open;
-      ASIO_ERROR_LOCATION(ec);
-      return;
-    }
-    auto state =
-        detail::create_connector_state(device_, config, ec);
-    if (ec) {
-      return;
-    }
-    assert(state);
-    state_ = std::move(state);
-    ec.clear();
   }
 
   bool has_executor() const noexcept {

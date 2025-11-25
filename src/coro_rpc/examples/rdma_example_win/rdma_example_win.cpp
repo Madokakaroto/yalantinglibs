@@ -47,8 +47,8 @@ void check_async_interface()
   // create rdma connection
   using connection_t = coro_io::roce::v2::tcp::connection;
   using endpoint_t = coro_io::roce::v2::tcp::endpoint;
-  connection_t connection{device};
-  connection.open(config);
+  connection_t connection{};
+  connection.open(device, config);
 
   // set io executor
   asio::io_context ioc{};
@@ -95,8 +95,8 @@ static async_simple::coro::Lazy<int> check_coro_interface() {
 
   // create rdma connection
   using connection_t = coro_io::roce::v2::tcp::connection;
-  connection_t connection{device};
-  connection.open(config);
+  connection_t connection{};
+  connection.open(device, config);
 
   // set io executor
   asio::io_context ioc{};
@@ -174,6 +174,42 @@ void check_listener_interface() {
         new_connection.set_execution_context(ioc);
       }
   });
+}
+
+static async_simple::coro::Lazy<int> check_listen_coro_interface() {
+  // get device
+  auto const& device_manager = coro_io::nd_device_manager_t::instance();
+
+  coro_io::nd_config_t config{};
+  auto device = device_manager.get_first_available_device(
+      coro_io::roce::v2::tcp::v4(), config);
+
+  // create rdma listener
+  using listener_t = coro_io::roce::v2::tcp::listener;
+  using endpoint_t = coro_io::roce::v2::tcp::endpoint;
+  using connection_t = coro_io::roce::v2::tcp::connection;
+  listener_t listener{};
+  listener.open(device, config);
+
+  // set io executor
+  asio::io_context ioc{};
+  // connection.set_executor(ioc.get_executor());
+  listener.set_execution_context(ioc);
+
+  // bind port number
+  uint16_t const port_number = 1666;
+  listener.bind(1666);
+  // listen
+  listener.listen();
+
+  // construct with open, bind & listen
+  listener_t listener1 { device, config, port_number };
+  listener1.set_execution_context(ioc);
+
+  // construct new 
+  connection_t new_connection{};
+  auto ec = co_await async_accept(listener1, new_connection, config);
+  co_return 0;
 }
 
 int main() {

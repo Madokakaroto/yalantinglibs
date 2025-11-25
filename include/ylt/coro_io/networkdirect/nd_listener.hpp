@@ -185,6 +185,11 @@ class nd_listener {
     asio::detail::throw_error(ec, "set_execution_context");
   }
 
+  void cancel() {
+    // TODO ...
+    assert(false);
+  }
+
   // begin implement async write
  private:
   class initiate_async_accept {

@@ -37,6 +37,21 @@ inline async_simple::coro::Lazy<std::error_code> async_connect(
   co_return ec;
 }
 
+template <typename PortSpace>
+inline async_simple::coro::Lazy<std::error_code> async_accept(
+    nd_listener<PortSpace>& listener, nd_connection<PortSpace>& connection,
+    nd_config_t const& config = nd_config_t{}) {
+  if (!listener.has_executor()) {
+    co_return nd_errc::ext_no_executor;
+  }
+  auto ec = co_await async_io<std::error_code>(
+      [&](auto cb) {
+        listener.async_accept(connection, config, cb);
+      },
+      listener);
+  co_return ec;
+}
+
 template <typename PortSpace, typename MutableBufferSequence>
 inline async_simple::coro::Lazy<std::pair<std::error_code, std::size_t>>
 async_recv(nd_connection<PortSpace>& connection,

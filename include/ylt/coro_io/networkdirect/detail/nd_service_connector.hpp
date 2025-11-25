@@ -102,7 +102,32 @@ public: // rule of five, used by asio::detail::io_object_impl
     }
   }
 
-public: // public interfaces
+public: // public interfaces on state
+  static bool is_open(shared_state_ptr const& state) {
+    return state != nullptr && state->connector_ != nullptr;
+  }
+
+  static asio::error_code open(nd_device_ptr const& device,
+                               nd_config_t config,
+                               shared_state_ptr& state, asio::error_code& ec) {
+    if (is_open(state)) {
+      ec = asio::error::already_open;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    if (!device) {
+      ec = nd_errc::ext_invalid_device;
+      ASIO_ERROR_LOCATION(ec);
+      return ec;
+    }
+    state = detail::create_connector_state(device, config, ec);
+    if (ec) {
+      ASIO_ERROR_LOCATION(ec);
+    }
+    return ec;
+  }
+
+public: // public interfaces on implementation
   bool has_state(implementation_type const& impl) const {
     return impl.state_ != nullptr;
   }
