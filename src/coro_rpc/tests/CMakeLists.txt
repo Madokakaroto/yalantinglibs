@@ -23,6 +23,12 @@ if (YLT_ENABLE_SSL)
                 test_rpc_ssl_reconnect.cpp
         )
 endif()
+if (YLT_ENABLE_ND)
+        set(TEST_SRCS
+                ${TEST_SRCS}
+                test_networkdirect_rpc.cpp
+        )
+endif()
 set(TEST_COMMON
         rpc_api.cpp
         main.cpp

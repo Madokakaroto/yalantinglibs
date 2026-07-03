@@ -180,6 +180,16 @@ class coro_rpc_server_base {
     else {
       init_acceptors(config.address, config.port);
     }
+#ifdef YLT_ENABLE_ND
+    if (config.nd_config) {
+      auto nd_port = config.nd_port == 0 ? uint16_t(config.port + 1)
+                                         : config.nd_port;
+      auto nd_address =
+          config.nd_address.empty() ? config.address : config.nd_address;
+      init_nd(config.nd_config.value(), config.nd_dev_lists, nd_port,
+              nd_address);
+    }
+#endif
   }
 
   ~coro_rpc_server_base() {
@@ -203,6 +213,36 @@ class coro_rpc_server_base {
       std::vector<std::shared_ptr<coro_io::ib_device_t>> ibv_dev_lists = {}) {
     ibv_config_ = conf;
     ibv_dev_lists_ = std::move(ibv_dev_lists);
+  }
+#endif
+#ifdef YLT_ENABLE_ND
+  void init_nd(const coro_io::nd_socket_t::config_t& conf = {},
+               std::vector<coro_io::nd_device_ptr> nd_dev_lists = {},
+               uint16_t nd_port = 0, std::string nd_address = {}) {
+    if (flag_ != stat::init) {
+      ELOG_WARN << "init_nd ignored: server has already started or stopped";
+      return;
+    }
+    if (nd_port == 0) {
+      nd_port = static_cast<uint16_t>(port() + 1);
+    }
+    if (nd_address.empty()) {
+      nd_address = std::string(address());
+    }
+    if (nd_dev_lists.empty()) {
+      auto nd_conf = conf;
+      acceptors_.push_back(std::make_unique<coro_io::nd_server_acceptor>(
+          nd_address, nd_port, nd_conf));
+      nd_acceptor_indices_.push_back(acceptors_.size() - 1);
+      return;
+    }
+    for (auto& dev : nd_dev_lists) {
+      auto nd_conf = conf;
+      nd_conf.device = std::move(dev);
+      acceptors_.push_back(std::make_unique<coro_io::nd_server_acceptor>(
+          nd_address, nd_port, nd_conf));
+      nd_acceptor_indices_.push_back(acceptors_.size() - 1);
+    }
   }
 #endif
 
@@ -365,6 +405,14 @@ class coro_rpc_server_base {
    * @return listening port
    */
   uint16_t port() const { return acceptors_[0]->port(); };
+#ifdef YLT_ENABLE_ND
+  uint16_t nd_port() const {
+    if (nd_acceptor_indices_.empty()) {
+      return 0;
+    }
+    return acceptors_[nd_acceptor_indices_.front()]->port();
+  }
+#endif
   /*
    * Get listening address
    * @return listening address
@@ -683,6 +731,9 @@ class coro_rpc_server_base {
   std::optional<coro_io::ib_socket_t::config_t> ibv_config_;
   std::vector<std::shared_ptr<coro_io::ib_device_t>> ibv_dev_lists_;
   std::atomic<std::size_t> rr_index_ = 0;
+#endif
+#ifdef YLT_ENABLE_ND
+  std::vector<std::size_t> nd_acceptor_indices_;
 #endif
 
   std::function<bool(const asio::ip::tcp::endpoint&)> client_filter_;

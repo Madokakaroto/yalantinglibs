@@ -65,6 +65,12 @@ if(ENABLE_SANITIZER AND NOT MSVC)
     endif()
 endif()
 
+# MSVC defaults to the active system code page. The source tree contains UTF-8
+# files, so compile them as UTF-8 to avoid C4819 and possible data loss.
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # warning
 option(ENABLE_WARNING "Enable warning for all project " OFF)
 if(ENABLE_WARNING)
